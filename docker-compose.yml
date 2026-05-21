@@ -1,0 +1,80 @@
+# ConX — orchestration locale.
+# Démarre la stack complète en local : postgres_local (PostGIS), backend FastAPI, martin (tuiles MVT).
+# Frontend lancé séparément en dev (npm run dev) ; intégré en J14+.
+
+services:
+  postgres_local:
+    image: postgis/postgis:16-3.4
+    container_name: conx_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_LOCAL_DB:-conx}
+      POSTGRES_USER: ${POSTGRES_LOCAL_USER:-conx}
+      POSTGRES_PASSWORD: ${POSTGRES_LOCAL_PASSWORD:?POSTGRES_LOCAL_PASSWORD non défini dans .env}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "${POSTGRES_LOCAL_PORT:-5432}:5432"
+    volumes:
+      - postgres_local_data:/var/lib/postgresql/data
+      - ./scripts/sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_LOCAL_USER:-conx} -d ${POSTGRES_LOCAL_DB:-conx}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - conx_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: conx_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override pour pointer vers le service postgres_local du réseau Docker
+      POSTGRES_LOCAL_HOST: postgres_local
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+      - ./data/storage:/app/data/storage
+    depends_on:
+      postgres_local:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - conx_net
+
+  martin:
+    # Sidecar Rust qui sert les tuiles vectorielles MVT depuis postgres_local.
+    # Configuration vide pour l'instant (J1 stub). Activé pleinement en J7.
+    image: ghcr.io/maplibre/martin:v1.10.1
+    container_name: conx_martin
+    restart: unless-stopped
+    command: ["--listen-addresses", "0.0.0.0:3000"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_LOCAL_USER:-conx}:${POSTGRES_LOCAL_PASSWORD}@postgres_local:5432/${POSTGRES_LOCAL_DB:-conx}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres_local:
+        condition: service_healthy
+    networks:
+      - conx_net
+
+volumes:
+  postgres_local_data:
+    name: conx_postgres_local_data
+
+networks:
+  conx_net:
+    name: conx_net
+    driver: bridge

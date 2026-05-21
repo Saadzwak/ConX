@@ -1,0 +1,34 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+
+# Database (postgres_local async)
+asyncpg==0.30.0
+sqlalchemy[asyncio]==2.0.36
+
+# Auth (Supabase JWT — cf. D-012)
+PyJWT[crypto]==2.10.1
+
+# Supabase client (Auth + tables app)
+supabase==2.10.0
+
+# Anthropic SDK (Managed Agents — beta managed-agents-2026-04-01 requis)
+anthropic==0.103.1
+
+# Validation
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# Logging
+loguru==0.7.3
+
+# HTTP client (BAN, ngrok update, etc.)
+httpx==0.28.1
+
+# Tests
+pytest==8.3.4
+pytest-asyncio==0.25.0
+pytest-cov==6.0.0
+
+# Lint
+ruff==0.8.4

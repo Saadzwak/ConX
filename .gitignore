@@ -1,0 +1,70 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+.venv_*/
+venv/
+env/
+ENV/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.pkl
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+.next/
+*.log
+
+# Data (sources & generated artifacts)
+data/
+!data/.gitkeep
+*.laz
+*.las
+*.gpkg
+*.shp
+*.dbf
+*.shx
+*.prj
+*.cpg
+*.sql.gz
+*.pgdump
+*.dump
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Misc
+.cache/
+tmp/
+*.tmp

@@ -170,29 +170,28 @@ def _emission_factor(energy_type: str | None, factors: dict[str, float]) -> floa
 
 def _faisa_subindicators(
     building: dict[str, Any],
-    has_topo_roads: bool,
     faisa_weights: dict[str, float],
+    acces_chantier_value: float | None = None,
 ) -> tuple[float, dict[str, float], bool]:
     """Retourne (s_faisa, breakdown, partial_flag).
 
-    partial_flag = True si acces_chantier n'a pas pu être calculé (BD TOPO absente).
-    Dans ce cas on neutralise le sous-indicateur en redistribuant son poids sur les autres
-    proportionnellement.
+    `acces_chantier_value` : valeur pré-calculée depuis `public_data.building_acces_chantier`
+    (cf. scripts/compute_acces_chantier.py). ∈ {0, 0.5, 1.0} selon largeur voie à <10 m.
+    Si None (BD TOPO pas encore ingérée OU pas de voie à <10 m), partial_flag=True et
+    le poids du sous-indicateur est redistribué proportionnellement sur les 5 autres.
     """
-    missing_acces = not has_topo_roads
+    missing_acces = acces_chantier_value is None
     subs: dict[str, float] = {}
 
     # Toiture régulière — sans LiDAR ni typologie toiture, on prend valeur par défaut 0.5 (neutre).
     # Sera affiné en J5+ avec LiDAR ou attributs BD TOPO (materiaux_de_la_toiture).
     subs["toiture_reguliere"] = 0.5
 
-    # Accès chantier — nécessite BD TOPO. Si absent, partial=True.
+    # Accès chantier — utilise valeur pré-calculée si dispo.
     if missing_acces:
-        subs["acces_chantier"] = 0.0  # ignoré via la redistribution des poids
+        subs["acces_chantier"] = 0.0  # neutralisé via redistribution des poids
     else:
-        # Sera calculé en post-update une fois BD TOPO ingérée (PostGIS distance to topo_roads + largeur).
-        # Pour l'instant on met une valeur indicative neutre en attendant la passe de mise à jour.
-        subs["acces_chantier"] = 0.5
+        subs["acces_chantier"] = float(acces_chantier_value)
 
     # Hauteur compatible préfabrication
     hauteur = building.get("hauteur_m")
@@ -251,7 +250,7 @@ def compute_components(
     dpe: dict[str, Any] | None,
     thresholds: ScoringThresholds,
     *,
-    has_topo_roads: bool = False,
+    acces_chantier_value: float | None = None,
 ) -> BuildingScoreComponents:
     """Calcule les 5 composantes pour un bâtiment + son DPE optionnel.
 
@@ -261,8 +260,8 @@ def compute_components(
                    spr, dpe_classe, dpe_kwh_ep_m2_an.
         dpe      : dict DPE détaillé (type_dpe, type_energie_chauffage, ...) ou None si absent.
         thresholds : ScoringThresholds chargé via load_thresholds().
-        has_topo_roads : True si public_data.topo_roads est dispo pour ce dpt (S_faisa.acces_chantier
-                         calculable). Si False, S_faisa marqué partial.
+        acces_chantier_value : valeur pré-calculée depuis public_data.building_acces_chantier
+                              ou None si non disponible (S_faisa marqué partial).
 
     Returns:
         BuildingScoreComponents avec les 5 scores [0,1] + valeurs brutes + flags qualité.
@@ -312,7 +311,11 @@ def compute_components(
     s_co2 = _clip(co2_evite_t / thresholds.co2_max_tonnes_30ans, 0.0, 1.0)
 
     # === S_faisa ===
-    s_faisa, faisa_breakdown, s_faisa_partial = _faisa_subindicators(building, has_topo_roads, thresholds.faisa_weights)
+    s_faisa, faisa_breakdown, s_faisa_partial = _faisa_subindicators(
+        building,
+        thresholds.faisa_weights,
+        acces_chantier_value=acces_chantier_value,
+    )
 
     # === S_cout ===
     type_norm = _normalize_type_principal(building.get("type_principal"))

@@ -289,3 +289,90 @@ config YAML, tests unitaires + invariants DB. (3) Téléchargement BD TOPO en ar
 3. Attendre dpt 80 BD TOPO → ingestion 5 dpts.
 4. Passe de mise à jour S_faisa avec acces_chantier (PostGIS ST_DWithin + largeur).
 5. Tests d'invariants finaux + commit.
+
+---
+
+## 2026-05-21 — Session 5 (J4 effectif + acces_chantier + scoring v2 complet)
+
+**Heure début** : 2026-05-21 ~22:00
+**Heure fin** : 2026-05-21 22:55
+**Objectif** : Compléter J4 (ingestion BD TOPO 5 dpts roads+buildings), pré-calcul acces_chantier
+(passe S_faisa), re-batch scoring complet avec valeurs réelles.
+
+### Ce qui a marché
+- **BD TOPO 5 dpts HDF ingérés** (millésime 3-5_2025-12-15) en ~25 min :
+  - `topo_roads` : 244 425 + 374 289 + 246 196 + 316 442 + 204 624 = **1 385 976 routes** (02/59/60/62/80)
+  - `topo_buildings` : 681 805 + 2 009 504 + 843 588 + 1 481 469 + 829 472 = **5 845 838 bâtiments**
+    (plus que BDNB — BD TOPO inclut annexes, garages, hangars — utile pour fallback 3D et cross-val hauteur).
+- **`compute_acces_chantier.py`** : passe PostGIS ST_DWithin(b.geom, r.geom, 10) + ORDER BY largeur DESC.
+  Couverture **100 % (3 122 513 bâtiments)** en 410 s cumulés (~7600/s en moyenne).
+  Distribution acces_chantier HDF :
+  - **1.0 (route ≥ 4 m à <10 m)** : 1 415 297 (**45.3 %**)
+  - **0.5 (route 2-4 m)** : 190 289 (**6.1 %**)
+  - **0.0 (impasse, sentier, enclavé)** : 1 516 927 (**48.6 %**)
+
+  Le 48.6 % "enclavé" est cohérent avec une région où beaucoup de bâtiments sont en fond de cour,
+  près de sentiers/chemins sans largeur mesurée dans BD TOPO (47 % des routes ont `largeur_m` NULL :
+  Chemin, Sentier, Escalier).
+- **Re-batch scoring complet** (v2) avec acces_chantier réel intégré : 3 122 513 bâtiments en **753 s**
+  (~4 150/s). Résultats finaux :
+  - **Total** : 3 122 513
+  - **Avec 5 composantes complètes (real DPE + non-partial faisa)** : **417 353 (13.4 %)**
+  - **`incomplete_data` (sans DPE → fallback midpoint, sera comblé J5 ML)** : 2 705 160 (86.6 %)
+  - **`s_faisa_partial`** : **0 (0 %)** — réintégration acces_chantier réussie sur 100 % du parc.
+- Top 5 scores (poids défaut 0.35/0.25/0.20/0.10/0.10) :
+  ```
+  bdnb-bg-D36X-BW1A-A2CK (59) | s_co2=1.000 s_faisa=0.845 s_cout=1.000 s_social=1.000 s_passoire=1.000 conf=1
+  bdnb-bg-NW11-MP89-7H4S (62) | idem
+  bdnb-bg-JXTH-7BF1-FA9V (62) | idem
+  ...
+  ```
+  → DPE F/G + bailleur social + collectif R+1-R+5 + accès route ≥ 4 m + CO₂ évitable > 500 t/30ans.
+  Exactement le profil que la formule SCORING.md devrait prioriser. Score total ≈ 96/100.
+
+### Ce qui n'a pas marché / corrigé en cours
+- **Bug colonnes BD TOPO 3-5** : noms changés vs anciennes versions. Empiriquement identifiés
+  (dpt 60 staging) :
+  - `largeur` → `largeur_de_chaussee`
+  - `sens` → `sens_de_circulation`
+  - `nom_1_droite` → `nom_voie_ban_droite` (fallback `nom_collaboratif_droite`)
+  - `wkb_geometry` → `geometrie`
+  → script `consolidate_roads` mis à jour avec les nouveaux noms + commentaire d'explication.
+- **Migrations 006/007 non auto-appliquées par `ingest_bdtopo.py`** : ajout d'une fonction
+  `apply_migrations()` qui vérifie l'existence puis applique. Idempotente. Dpt 02 buildings a
+  échoué la 1ère fois (table absente), corrigé par auto-apply au 2e essai.
+- **API drift `compute_components`** : signature simplifiée (`has_topo_roads` retiré, remplacé par
+  `acces_chantier_value: float | None`). Plus propre, mais nécessite mise à jour du caller
+  `compute_building_scores.py` (fait). Tests unitaires mis à jour (parametrize utilisé pour pin
+  tertiaire bureaux=commerce à 0.9).
+- **Anti-drift schema CHECK constraint** : `dpe_source` enum réduit à 2 valeurs canoniques SCORING.md
+  ({ademe-real, ml-predicted}) après détection advisor que 3e valeur dérivait. Re-run dpt 02 nécessaire
+  pour respecter la nouvelle CHECK. Documenté.
+- **Note code-semantics drift v1/v2** : Le 1er batch scoring (avant API change) avait `has_topo_roads`
+  bool ; le 2e batch (après) a `acces_chantier_value`. Hash YAML inchangé donc
+  `test_thresholds_version_uniforme` passe. UPSERT v2 a complètement écrasé les rows v1 → DB cohérente.
+  Pour audit traceable plus tard : ajouter un `code_version` column si besoin (post-MVP).
+
+### Décisions techniques internes
+- **Pattern : pour chaque ingestion en `--all`, appliquer les migrations associées** (ingest_bdnb.py
+  déjà, ingest_bdtopo.py maintenant aussi, compute_building_scores.py applique 008+009).
+- **2 connexions psycopg** pour batch lourd (read server-side cursor + write UPSERT par chunks).
+  Pattern utilisé dans compute_building_scores.py, à reproduire en J5.
+- **`compute_acces_chantier.py`** : SQL pur PostGIS (pas Python pour le calcul, juste l'orchestration).
+  ST_DWithin + GIST index = ~7600 bâtiments/s.
+
+### Limitations connues
+- **86.6 % `incomplete_data`** = bâtiments sans DPE classé. Fallback midpoint utilisé, confidence < 0.4.
+  Sera résolu en J5 (ML estimation DPE rempliera les trous).
+- 48.6 % `acces_chantier=0.0` : reflète la réalité HDF (rural + sentiers BD TOPO sans largeur).
+  Pas un bug. Si besoin d'affiner pour quartiers urbains : raffiner par classe `nature` des routes.
+- BD TOPO ingestion n'a PAS testé end-to-end le `apply_migrations` cold-start (les tables existaient
+  déjà au 1er run). Le code est straightforward (check exists → apply). Pour fresh install :
+  `DROP TABLE public_data.topo_buildings; python scripts/ingest_bdtopo.py 02` validerait.
+
+### Bloqueurs ouverts
+- Aucun nouveau. B-001 (TTL session Managed Agents) reste à tester en J10.
+
+### Prochaine étape (mode boucle continue)
+- Commit cette session (advisor OK).
+- En attente prochain feedback partenaire pour J5 (ML estimation DPE) ou autres directions.

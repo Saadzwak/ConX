@@ -58,7 +58,7 @@ def test_passoire_F_logement_collectif():
         "dpe_kwh_ep_m2_an": 390.0,
     }
     dpe = {"type_energie_chauffage": "gaz"}
-    comp = compute_components(building, dpe, THRESHOLDS, has_topo_roads=True)
+    comp = compute_components(building, dpe, THRESHOLDS, acces_chantier_value=1.0)
 
     assert comp.s_passoire == 1.0
     assert comp.s_social == 1.0  # bailleur_social
@@ -86,7 +86,7 @@ def test_classe_A_no_passoire():
         "dpe_classe": "A",
         "dpe_kwh_ep_m2_an": 55.0,
     }
-    comp = compute_components(building, None, THRESHOLDS, has_topo_roads=True)
+    comp = compute_components(building, None, THRESHOLDS, acces_chantier_value=1.0)
 
     assert comp.s_passoire == 0.0
     assert comp.s_social == 0.30  # particulier
@@ -114,7 +114,7 @@ def test_co2_saturation_at_500_tonnes():
         "dpe_kwh_ep_m2_an": 500.0,
     }
     dpe = {"type_energie_chauffage": "gaz"}
-    comp = compute_components(building, dpe, THRESHOLDS, has_topo_roads=True)
+    comp = compute_components(building, dpe, THRESHOLDS, acces_chantier_value=1.0)
     assert comp.s_co2 == 1.0
     assert comp.co2_evite_t > 500
 
@@ -133,8 +133,8 @@ def test_monument_historique_zeros_faisa_patrimoine():
         "dpe_classe": "F",
         "dpe_kwh_ep_m2_an": 390.0,
     }
-    with_mh = compute_components({**base, "monument_historique": True}, None, THRESHOLDS, has_topo_roads=True)
-    without_mh = compute_components({**base, "monument_historique": False}, None, THRESHOLDS, has_topo_roads=True)
+    with_mh = compute_components({**base, "monument_historique": True}, None, THRESHOLDS, acces_chantier_value=1.0)
+    without_mh = compute_components({**base, "monument_historique": False}, None, THRESHOLDS, acces_chantier_value=1.0)
     assert with_mh.s_faisa < without_mh.s_faisa
     # MH coût modulator x 1.30
     assert with_mh.cout_estime_eur > without_mh.cout_estime_eur
@@ -155,8 +155,8 @@ def test_s_faisa_partial_flag_when_no_topo():
         "dpe_classe": "E",
         "dpe_kwh_ep_m2_an": 295.0,
     }
-    comp_partial = compute_components(building, None, THRESHOLDS, has_topo_roads=False)
-    comp_full = compute_components(building, None, THRESHOLDS, has_topo_roads=True)
+    comp_partial = compute_components(building, None, THRESHOLDS, acces_chantier_value=None)
+    comp_full = compute_components(building, None, THRESHOLDS, acces_chantier_value=1.0)
     assert comp_partial.s_faisa_partial is True
     assert comp_full.s_faisa_partial is False
     assert 0.0 <= comp_partial.s_faisa <= 1.0
@@ -179,7 +179,7 @@ def test_incomplete_data_flag_when_no_surface():
         "dpe_classe": "E",
         "dpe_kwh_ep_m2_an": 295.0,
     }
-    comp = compute_components(building, None, THRESHOLDS, has_topo_roads=True)
+    comp = compute_components(building, None, THRESHOLDS, acces_chantier_value=1.0)
     assert comp.incomplete_data is True
     assert "surface_m2" in comp.missing_fields
     assert comp.confidence < 1.0
@@ -204,7 +204,7 @@ def test_bornes_components_strict():
     }
     for case in rng_cases:
         b = {**base, **case}
-        comp = compute_components(b, None, THRESHOLDS, has_topo_roads=True)
+        comp = compute_components(b, None, THRESHOLDS, acces_chantier_value=1.0)
         for k, v in [
             ("s_co2", comp.s_co2),
             ("s_faisa", comp.s_faisa),
@@ -260,8 +260,8 @@ def test_tertiaire_type_compatible_uniform(type_principal):
     }
     other = "bureau" if "commer" in type_principal or "magas" in type_principal else "commerce"
     other_building = {**building, "type_principal": other}
-    comp1 = compute_components(building, None, THRESHOLDS, has_topo_roads=True)
-    comp2 = compute_components(other_building, None, THRESHOLDS, has_topo_roads=True)
+    comp1 = compute_components(building, None, THRESHOLDS, acces_chantier_value=1.0)
+    comp2 = compute_components(other_building, None, THRESHOLDS, acces_chantier_value=1.0)
     assert comp1.s_faisa == comp2.s_faisa, (
         f"Drift SCORING.md : '{type_principal}' et '{other}' produisent S_faisa différents "
         f"({comp1.s_faisa} vs {comp2.s_faisa}). SCORING.md liste UNE seule valeur tertiaire = 0.9."

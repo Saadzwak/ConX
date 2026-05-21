@@ -83,7 +83,8 @@ def fetch_buildings_dpe(
         b.periode_construction, b.type_principal, b.type_proprietaire,
         b.monument_historique, b.spr, b.dpe_classe, b.dpe_kwh_ep_m2_an,
         d.type_dpe, d.type_energie_chauffage, d.type_energie_ecs,
-        d.classe_bilan_dpe, d.conso_5_usages_ep_m2_an
+        d.classe_bilan_dpe, d.conso_5_usages_ep_m2_an,
+        bac.acces_chantier
     FROM public_data.buildings b
     LEFT JOIN LATERAL (
         SELECT * FROM public_data.dpe dpe
@@ -91,6 +92,7 @@ def fetch_buildings_dpe(
         ORDER BY dpe.date_etablissement_dpe DESC NULLS LAST
         LIMIT 1
     ) d ON true
+    LEFT JOIN public_data.building_acces_chantier bac ON bac.building_id = b.building_id
     WHERE b.dept = %s
     """
     with read_conn.cursor(name=f"cursor_dept_{dept}", row_factory=dict_row) as cur:
@@ -128,7 +130,12 @@ def fetch_buildings_dpe(
                     if row["conso_5_usages_ep_m2_an"] is not None
                     else None,
                 }
-            yield building, dpe
+            acces_chantier_value = (
+                float(row["acces_chantier"])
+                if row["acces_chantier"] is not None
+                else None
+            )
+            yield building, dpe, acces_chantier_value
 
 
 UPSERT_SQL = """
@@ -216,8 +223,13 @@ def compute_dept(
     n_real_dpe = 0
     batch: list[tuple[Any, ...]] = []
 
-    for building, dpe in fetch_buildings_dpe(read_conn, dept, chunk=chunk):
-        comp = compute_components(building, dpe, thresholds, has_topo_roads=has_topo)
+    for building, dpe, acces_value in fetch_buildings_dpe(read_conn, dept, chunk=chunk):
+        comp = compute_components(
+            building,
+            dpe,
+            thresholds,
+            acces_chantier_value=acces_value,
+        )
         if comp.incomplete_data:
             n_incomplete += 1
         if comp.s_faisa_partial:
@@ -252,23 +264,32 @@ def compute_dept(
     }
 
 
-def apply_migration_008(conn: psycopg.Connection) -> None:
-    """Applique 008_create_building_scores.sql si table absente."""
-    with conn.cursor() as cur:
-        cur.execute("""
-            SELECT 1 FROM information_schema.tables
-            WHERE table_schema='public_data' AND table_name='building_scores';
-        """)
-        if cur.fetchone():
-            return
-    sql_path = (
-        ROOT / "scripts" / "sql" / "migrations" / "008_create_building_scores.sql"
-    )
-    sql = sql_path.read_text(encoding="utf-8")
-    with conn.cursor() as cur:
-        cur.execute(sql)
-    conn.commit()
-    logger.info("Migration 008_create_building_scores.sql appliquée.")
+def apply_migrations(conn: psycopg.Connection) -> None:
+    """Applique 008 (building_scores) et 009 (building_acces_chantier) si absentes.
+
+    Note (anti-drift) : si la table existe déjà avec une version plus ancienne du schéma
+    (par ex. CHECK plus laxe), ce skip ne mettra PAS à jour le schéma. Documenté
+    dans BUILD_LOG Session 4. Pour forcer un schéma propre, DROP manuellement.
+    """
+    migrations = [
+        ("building_scores", "008_create_building_scores.sql"),
+        ("building_acces_chantier", "009_update_s_faisa_acces_chantier.sql"),
+    ]
+    for table_name, sql_file in migrations:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema='public_data' AND table_name=%s;",
+                (table_name,),
+            )
+            if cur.fetchone():
+                continue
+        sql_path = ROOT / "scripts" / "sql" / "migrations" / sql_file
+        sql = sql_path.read_text(encoding="utf-8")
+        with conn.cursor() as cur:
+            cur.execute(sql)
+        conn.commit()
+        logger.info(f"Migration {sql_file} appliquée.")
 
 
 def main() -> int:
@@ -289,7 +310,7 @@ def main() -> int:
     with psycopg.connect(conn_str, autocommit=False) as read_conn, psycopg.connect(
         conn_str, autocommit=False
     ) as write_conn:
-        apply_migration_008(write_conn)
+        apply_migrations(write_conn)
         depts = DEFAULT_DEPTS if (args.all or args.dept is None) else [args.dept]
         agg = {"total": 0, "incomplete": 0, "faisa_partial": 0, "real_dpe": 0}
         for d in depts:

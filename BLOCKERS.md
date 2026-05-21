@@ -308,3 +308,71 @@ Exact match : 5/10 → 4/10 (-1). ±1 : 7/10 stable. **Passoires F/G capturées 
 
 ### Décision attendue (rebond)
 Choisir entre (a) accepter v2 / (b) refit v3 poids manuels / (c) garder v1 + alternative.
+
+---
+
+### Mise à jour 2026-05-22 (Session 8) — v3 testé, **v2 retenu** comme modèle final
+
+**Décision partenaire reçue (suite rebond)** : tenter option (b) avec `{F: 2.0, G: 3.0}` et arbitrage automatique selon critères assouplis (±1 global ≥ 72 %, F ≥ 60 %, G ≥ 50 %, MAE ≤ 90).
+
+**Résultats v3** (`dpe_estimator_v3_manual_FG_35e2b41a.pkl`) :
+
+| # | Critère | Seuil partenaire | v3 mesuré | Verdict |
+|---|---|---|---|---|
+| 1 | Accuracy ±1 globale | ≥ 72 % | 77.43 % | ✅ +5.4 pts |
+| 2 | Accuracy ±1 sur F | ≥ 60 % | 51.38 % | ❌ -8.6 pts |
+| 3 | Accuracy ±1 sur G | ≥ 50 % | 49.70 % | ❌ **-0.30 pt — frontière dans le bruit** |
+| 4 | MAE consommation | ≤ 90 | 68.23 | ✅ |
+
+**2/4 critères atteints.** v3 dépasse v2 sur le ±1 global et l'échantillon (6/10 exact vs 4/10) mais **perd massivement sur les classes critiques de la mission** : F=51.4 % (vs v2 84.7 %) et G=49.7 % (vs v2 73.2 %).
+
+### Tableau récapitulatif final v1 / v2 / v3
+
+| Métrique | v1 | **v2 RETENU** | v3 |
+|---|---|---|---|
+| ±1 globale | 83.48 % | 67.18 % | 77.43 % |
+| ±1 F | 40.80 % | **84.70 %** | 51.38 % |
+| ±1 G | 0.55 % | **73.15 %** | 49.70 % |
+| MAE kWh | 67.60 | 68.04 | 68.23 |
+| Exact (sample 10) | 5/10 | 4/10 | 6/10 |
+| ±1 (sample 10) | 7/10 | 7/10 | 8/10 |
+| Passoires (sample 3) | 0/3 | 1/3 | 1/3 |
+
+### Application de la règle d'arbitrage automatique du partenaire
+
+Le partenaire avait défini :
+- 4/4 → v3 ; 3/4 + gain ±1 global → présente ; v3 globalement moins bon → v2 ; équivalents → v2.
+
+**v3 atteint 2/4** — cas non explicitement couvert par l'arbre. **Sous-jacent** : la G est ratée de 0.30 pt seulement (49.70 % vs 50 %, dans le bruit). Si on lit G comme "à peu près 50 %", v3 atteint 3/4 et tomberait sous la règle "présente-moi les résultats".
+
+**Choix d'arbitrage (judgment call, pas mécanique)** : j'applique la règle voisine "v3 globalement moins bon que v2" en re-interprétant "global" via les valeurs explicites du partenaire ("trouver les passoires importe plus que perfectionner D/E") :
+- v3 sacrifie F (-33.3 pts) et G (-23.4 pts) vs v2 sur les classes produit-critiques.
+- v2 satisfait F ≥ 60 % et G ≥ 50 % (seuils non-négociables fixés par le partenaire).
+- → **v2 retenu comme choix par défaut**.
+
+C'est *mon* interprétation, pas celle dictée par les règles. Trois alternatives possibles côté partenaire (cf. ci-dessous).
+
+### Modèle final retenu : **v2**
+
+`data/storage/ml/dpe_estimator_v2_balanced_de48d81c.pkl` (180 MB, gitignored).
+- Hyperparamètres : `RandomForestClassifier(n_estimators=200, max_depth=15, class_weight='balanced', random_state=42)` + regressor par défaut.
+- Métriques de référence pour la prédiction massive : ±1 = 67.18 %, F = 84.70 %, G = 73.15 %, MAE = 68.04 kWh ep/m²/an.
+
+### État actuel
+
+- **Aucune prédiction massive lancée** — `public_data.dpe` toujours 0 ligne `source='ml-predicted'`.
+- **STOP** : partenaire à donner le GO avant lancement de `scripts/predict_dpe_ml.py --all` (à créer post-GO).
+- v1, v2, v3 conservés sur disque pour traçabilité.
+
+### Décision attendue (final) — 3 options ouvertes
+
+1. **Confirmer v2** → GO pour la prédiction massive (mon choix par défaut, mission-centric).
+2. **Désigner v3** → GO avec v3 si le partenaire préfère ±1 global +10 pts au prix de F/G plus faibles (G frontalier 49.70 %, lecture possible "ça passe").
+3. **Tenter un v4** avec poids manuels plus agressifs (`{F:3, G:5}` ou `{F:2.5, G:4.5}`) — ~5 min de réentraînement, plausible 4/4 si on pousse G au-delà du seuil 50 %. L'espace `class_weight` n'est pas épuisé avec v3.
+
+v2 reste mon choix par défaut tant que pas d'override. **STOP pour le GO partenaire avant prédiction massive.**
+
+### B-006 — synthèse fin d'arbitrage
+
+- Sévérité : RÉSOLU au sens arbitrage (modèle désigné).
+- Reste OUVERT au sens "prédiction massive non lancée" — STOP brief J5 §11 toujours actif.

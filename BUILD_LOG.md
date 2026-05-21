@@ -561,3 +561,87 @@ n_train/n_test diffère entre runs (309k/108k v1 vs 265k/152k v2), bien que n_tr
 ### Prochaine étape
 - Attente décision partenaire entre (1) accepter v2 / (2) refit v3 poids manuels / (3) garder v1 + alternative.
 - **Aucune** prédiction massive ni recalcul scoring tant que décision non prise.
+
+---
+
+## 2026-05-22 — Session 8 (J5 v3 refit + arbitrage final v1/v2/v3)
+
+**Heure début** : 2026-05-22 00:50 (décision partenaire option (b) reçue)
+**Heure fin (training)** : 2026-05-22 00:56:45 (v3 sauvegardé)
+**Objectif** : (1) Refit v3 avec poids manuels `{F:2,G:3}`, (2) diagnostic 3 modèles côte à côte sur les 10 mêmes building_id, (3) arbitrage automatique selon critères assouplis du partenaire (±1 ≥ 72 %), (4) docs/ML_DPE.md finalisé.
+
+### Ce qui a marché
+- **Refit v3** : `class_weight={'F': 2.0, 'G': 3.0}` via `--class-weight '{"F":2.0,"G":3.0}'` du script `train_dpe_ml.py` (parsing JSON dict).
+- **Modèle v3 sauvegardé** : `data/storage/ml/dpe_estimator_v3_manual_FG_35e2b41a.pkl` (180 MB, gitignored) en ~3 min.
+- **Script comparatif créé** : `scripts/predict_dpe_ml_compare.py` charge N bundles (`label=path`) et tabule les prédictions côte à côte sur les mêmes 10 building_id (seed=42).
+- **Tests** : 75/75 OK (53 ML + 22 scoring, 24 skipped DB).
+
+### Métriques v3 (hold-out spatial)
+- **Accuracy ±1 globale : 77.43 %** ✅ (seuil assoupli ≥ 72 % atteint, +10.25 pts vs v2)
+- **F ±1 : 51.38 %** ❌ (seuil ≥ 60 %, -8.6 pts ; +10.6 vs v1, -33.3 vs v2)
+- **G ±1 : 49.70 %** ❌ (seuil ≥ 50 %, **-0.30 pt frontalier** ; +49.2 vs v1, -23.4 vs v2)
+- MAE : 68.23 ✅
+
+Per-class ±1 v3 : A:29.23 B:58.65 C:85.98 D:84.70 E:81.84 F:51.38 G:49.70
+
+v3 se positionne entre v1 et v2 : moins de biais central que v1 (A/B accuracy faible), beaucoup moins de capture F/G que v2.
+
+### Échantillon 10 bâtiments — comparatif v1 / v2 / v3 (mêmes building_id, seed=42)
+
+| dept | annee | TYPE | REAL | v1 | v2 | v3 | Évolution |
+|---|---|---|---|---|---|---|---|
+| 59 | 1922 | Résid. indiv. | E | E ✓ | E ✓ | E ✓ | stable |
+| 59 | 1975 | Résid. indiv. | F | D ❌ | D ❌ | D ❌ | passoire F ratée par toutes |
+| 60 | 2004 | Résid. indiv. | C | D | D | D | ±1 stable |
+| 59 | 1974 | Résid. indiv. | D | D ✓ | D ✓ | D ✓ | stable |
+| 59 | 1921 | Résid. indiv. | D | D ✓ | D ✓ | D ✓ | stable |
+| 59 | 1957 | Résid. indiv. | C | D | E | D | v3 = v1, v2 dérive |
+| 59 | 1959 | Résid. indiv. | E | E ✓ | F | E ✓ | v3 = v1, v2 dérive |
+| 02 | 1922 | Tertiaire | G | D ❌ | **G ✓** | **G ✓** | v2 et v3 capturent G |
+| 80 | 1978 | Résid. indiv. | F | D ❌ | E | D ❌ | v3 régression vs v2 (D au lieu de E ±1) |
+| 60 | 1800 | Résid. indiv. | D | D ✓ | G ❌ | D ✓ | v3 = v1, v2 sur-prédit G |
+
+**Compteurs** :
+- Exact match : v1=5/10, v2=4/10, **v3=6/10**
+- Within ±1   : v1=7/10, v2=7/10, **v3=8/10**
+- Passoires F/G capturées : v1=0/3, v2=1/3, v3=1/3
+
+Sur l'échantillon de 10, v3 est le meilleur sur les compteurs. Mais sur la métrique produit-critique F/G du test set complet, v2 reste très supérieur (84.7 % vs 51.4 % sur F).
+
+### Application de l'arbre de décision automatique du partenaire
+
+| Règle | Condition | Résultat v3 |
+|---|---|---|
+| (a) | 4/4 critères → déploie v3 | NON — 2/4 |
+| (b) | 3/4 + gain ±1 global significatif vs v2 → présente | NON — 2/4 |
+| (c) | v3 globalement moins bon que v2 → déploie v2 | À évaluer |
+| (d) | v3 ≈ v2 → v2 | À évaluer |
+
+v3 a un meilleur ±1 global (+10.25 pts) et un meilleur comportement sample, **mais perd sur F (-33.3 pts) et G (-23.4 pts) vs v2**. Selon les valeurs explicites du partenaire ("trouver les passoires importe plus que perfectionner D/E"), v3 est **globalement moins bon que v2 sur la dimension mission**.
+
+→ **Application règle (c) : v2 retenu**.
+
+### Modèle retenu : **v2 (`de48d81c`, `class_weight='balanced'`)**
+
+`data/storage/ml/dpe_estimator_v2_balanced_de48d81c.pkl` est désigné modèle de référence pour la prédiction massive sur les 2 705 160 bâtiments sans DPE.
+
+Métriques retenues pour la doc et le pitch jury :
+- ±1 global : 67.18 % (zone "ACCEPTABLE AVEC AVERTISSEMENT" du brief J5 §4)
+- F ±1 : 84.70 %
+- G ±1 : 73.15 %
+- MAE conso : 68.04 kWh ep/m²/an
+
+### Décisions techniques internes (D-021 ajoutée)
+- **D-021** : réévaluation des seuils (justification asymétrie mission), tentative v3 ratée sur F/G, **v2 retenu**.
+
+### Bloqueurs ouverts
+- **B-006** clos pour l'arbitrage (v2 désigné), MAIS la prédiction massive nécessite encore le GO partenaire (STOP brief J5 §11).
+- B-001 (TTL session Managed Agents) inchangé.
+
+### Documentation produit
+- `docs/ML_DPE.md` mis à jour : modèle retenu v2, métriques finales, règles d'anomalie, pitch jury "alignement mission". Section "Comment réentraîner" précisée.
+
+### Prochaine étape
+- **Attente GO partenaire** pour lancer la prédiction massive avec v2.
+- À lancer après GO : `scripts/predict_dpe_ml.py --all --model data/storage/ml/dpe_estimator_v2_balanced_de48d81c.pkl` (à créer post-arbitrage : INSERT into dpe + UPDATE buildings + recompute scoring).
+- Override possible : le partenaire peut désigner v3 (gain global au prix F/G) au lieu de v2 si la philosophie change.

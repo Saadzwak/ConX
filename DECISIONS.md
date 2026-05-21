@@ -585,3 +585,79 @@ public_data.building_neighborhood_train (
 
 ### Observation tracée (non bloquante)
 Le n_train/n_test diffère entre v1 (309 069 / 108 256) et v2 (264 939 / 152 386) bien que les communes/sizes (2 635 / 1 128) soient identiques. Cause : `load_training_dataframe` n'a pas d'`ORDER BY building_id`, donc l'ordre des `unique()` communes varie d'un run à l'autre → le shuffle pioche d'autres communes. Test sets approximativement comparables (méthodologie 70/30 spatiale identique, n_test_communes = 1 128 fixé), mais sélection précise non reproductible. À corriger en J5+ pour reproductibilité parfaite (ajout `ORDER BY building_id ASC` dans la requête SQL).
+
+---
+
+## D-021 — Réévaluation seuils ±1 (asymétrie mission produit), tentative v3 poids manuels, modèle retenu
+
+**Date** : 2026-05-22
+**Statut** : VALIDE
+**Catégorie** : ML — arbitrage seuils
+**Contexte** : v2 (D-020) atteignait F=84.7 % et G=73.2 % en ±1 mais manquait le seuil global ±1 ≥ 70 % (67.18 %, -2.82 pts). Le partenaire a réévalué la priorité après lecture des chiffres.
+
+### Décision (en deux temps)
+
+**1. Réévaluation des seuils** (justification asymétrie mission produit) :
+- Sur les 152 386 lignes de test v2, v2 capture ~13 700 passoires F/G de plus que v1 en ±1. Extrapolé aux 2.7 M bâtiments à prédire, l'ordre est de plusieurs centaines de milliers de passoires correctement identifiées.
+- Le coût (-16 pts en ±1 global) est concentré sur les classes médianes (D/E) où l'enjeu carbone est moindre.
+- Décision partenaire : assouplir le seuil global ±1 de **70 % → 72 %** pour l'évaluation de v3, parce que la mission ConX prime sur la précision globale.
+
+**2. Tentative v3 avec poids manuels** `{F: 2.0, G: 3.0}` (plus doux que `balanced`), tag `v3_manual_FG`, version hash `35e2b41a`.
+
+### Critères v3 vs résultats mesurés
+
+| # | Critère | Seuil partenaire | v3 mesuré | Verdict |
+|---|---|---|---|---|
+| 1 | Accuracy ±1 globale | ≥ 72 % | 77.43 % | ✅ +5.4 pts |
+| 2 | Accuracy ±1 sur F | ≥ 60 % | 51.38 % | ❌ -8.6 pts |
+| 3 | Accuracy ±1 sur G | ≥ 50 % | 49.70 % | ❌ -0.30 pt (frontière) |
+| 4 | MAE consommation | ≤ 90 | 68.23 | ✅ |
+
+**2/4 critères atteints.** Les deux critères ratés sont F et G — les classes critiques pour la mission ConX. v3 n'atteint pas le compromis recherché.
+
+### Arbitrage final entre v1, v2, v3
+
+Lecture comparative complète :
+
+| Métrique | v1 baseline | **v2 balanced** | v3 manual {F:2,G:3} |
+|---|---|---|---|
+| ±1 globale | 83.48 % | 67.18 % | 77.43 % |
+| ±1 sur F | 40.80 % | **84.70 %** | 51.38 % |
+| ±1 sur G | 0.55 % | **73.15 %** | 49.70 % |
+| MAE kWh | 67.60 | 68.04 | 68.23 |
+| Exact match (sample 10) | 5/10 | 4/10 | 6/10 |
+| ±1 (sample 10) | 7/10 | 7/10 | 8/10 |
+| Passoires capturées (sample 3) | 0/3 | 1/3 | 1/3 |
+
+Application des règles d'arbitrage automatique du partenaire :
+- v3 n'atteint pas 4/4 (donc pas de déploiement direct).
+- v3 n'atteint pas 3/4 (donc pas la voie "présentation pour décision").
+- v3 a un meilleur ±1 global et un meilleur comportement sur l'échantillon, mais perd contre v2 sur F (-33.3 pts) et G (-23.4 pts) — qui sont les classes prioritaires de la mission.
+
+→ **Per les valeurs explicites du partenaire "trouver les passoires importe plus que perfectionner D/E", v3 est globalement moins bon que v2 (lecture mission-centric).**
+
+### Modèle retenu : **v2 (`de48d81c`, `class_weight='balanced'`)**
+
+Le modèle qui satisfait les critères produit-critiques (F ≥ 60 % et G ≥ 50 %) au prix d'un ±1 global dans la zone "ACCEPTABLE AVEC AVERTISSEMENT" du brief J5 §4.
+
+### Conséquences
+- `data/storage/ml/dpe_estimator_v2_balanced_de48d81c.pkl` devient le modèle de référence pour la prédiction massive (en attente du GO partenaire).
+- v1 et v3 conservés sur disque pour traçabilité (gitignored).
+- UI : badge orange "DPE estimé par IA — fiabilité moyenne" + masquage des prédictions de confidence < seuil à définir.
+- Pour le pitch jury : narrer le choix méthodologique (3 modèles testés, sélection finale alignée avec la mission "passoires").
+
+### Cadre de mon arbitrage (judgment call, pas règle mécanique)
+
+L'arbre de décision du partenaire couvre 4/4, 3/4, "globalement moins bon", "équivalent". **v3 a 2/4 — ce cas n'est pas explicitement dans l'arbre**. J'ai inféré "v3 globalement moins bon que v2 *sur la dimension mission produit*" en re-interprétant "global" via les valeurs explicites du partenaire ("trouver les passoires importe plus que perfectionner D/E"). C'est un judgment call, pas une lecture mécanique des règles. Le partenaire peut tout à fait reformuler.
+
+### Note sur l'espace de recherche `class_weight`
+
+v3 manque G de 0.30 pt — frontalière. Un v4 avec poids plus agressifs (par ex. `{F: 3.0, G: 5.0}` ou `{F: 2.5, G: 4.5}`) pourrait plausiblement atteindre 4/4 (gagner sur G sans dégrader F/global). L'espace n'est pas exploré au-delà de v3, donc je ne défends pas v2 comme l'optimum absolu — seulement comme le meilleur des trois modèles testés selon les critères F/G prioritaires. ~5 min de réentraînement pour tester un v4 si le partenaire le souhaite.
+
+### Possibilité d'override partenaire
+Trois choix possibles à ce stade :
+1. **Confirmer v2** (mon choix par défaut) → prédiction massive.
+2. **Désigner v3** (préférer le ±1 global au prix des F/G) → prédiction massive.
+3. **Tenter v4** avec poids manuels plus agressifs (par ex. `{F:3,G:5}`) avant de figer le choix.
+
+Tous les modèles sont sur disque ; le code de prédiction massive est paramétrable par chemin du `.pkl`.

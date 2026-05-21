@@ -286,6 +286,8 @@ def compute_components(
     if kwh_actuelle is None:
         # Estimation très grossière par classe DPE (point milieu de l'intervalle officiel).
         # Sera remplacée par ML en J5.
+        # ⚠ SYNC MANUEL : ces midpoints sont DUPLIQUÉS dans `backend/app/carbon/factors.py`
+        # (CLASS_MIDPOINTS_KWH_EP). Si tu modifies l'un, modifie l'autre. À refactorer en J11+.
         class_midpoints = {
             "A": 55.0,
             "B": 90.0,

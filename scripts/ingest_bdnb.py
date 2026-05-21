@@ -321,24 +321,21 @@ def ingest_department(dept: str, inspect_only: bool = False) -> bool:
     return True
 
 
-def consolidate_dept(dept: str, env: dict[str, str]) -> None:
-    """Instancie le template 003_consolidate_buildings_dept.sql.template avec le dept
-    et exécute l'INSERT INTO public_data.buildings."""
-    template_path = SQL_MIGRATIONS_DIR / "003_consolidate_buildings_dept.sql.template"
+def _apply_template(template_name: str, dept: str, env: dict[str, str]) -> None:
+    """Instancie un template SQL par dépt (remplace {DEPT}) et l'exécute."""
+    template_path = SQL_MIGRATIONS_DIR / template_name
     if not template_path.exists():
         raise FileNotFoundError(template_path)
 
     sql = template_path.read_text(encoding="utf-8").replace("{DEPT}", dept)
-    logger.info(f"Consolidation public_data.buildings depuis bdnb_2025_07_a_open_data_dep{dept}")
-
-    # Écrire le SQL temporaire et l'exécuter via psql (gestion meilleure que -c pour les longs SQL).
-    tmp_path = SQL_MIGRATIONS_DIR.parent / "tmp" / f"003_consolidate_dep{dept}.sql"
+    stem = template_path.stem.replace(".sql", "")
+    tmp_path = SQL_MIGRATIONS_DIR.parent / "tmp" / f"{stem}_dep{dept}.sql"
     tmp_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path.write_text(sql, encoding="utf-8")
 
     if using_docker_exec():
         container = os.environ.get("CONX_POSTGRES_CONTAINER", "conx_postgres")
-        target = f"/tmp/003_consolidate_dep{dept}.sql"
+        target = f"/tmp/{tmp_path.name}"
         subprocess.run(["docker", "cp", str(tmp_path), f"{container}:{target}"], check=True)
         result = subprocess.run(
             [
@@ -370,17 +367,31 @@ def consolidate_dept(dept: str, env: dict[str, str]) -> None:
         )
 
     if result.returncode != 0:
-        logger.error(f"Consolidation échec pour {dept} :")
+        logger.error(f"Template {template_name} échec pour dpt {dept} :")
         logger.error(result.stderr[-2000:])
-        raise RuntimeError(f"Consolidation failed for dept {dept}")
+        raise RuntimeError(f"Template {template_name} failed for dept {dept}")
 
-    # Compte les lignes insérées (sanity)
-    count_result = psql_command(
+
+def consolidate_dept(dept: str, env: dict[str, str]) -> None:
+    """Applique les templates SQL paramétrés pour consolider un dpt :
+    - 003 : public_data.buildings
+    - 005 : public_data.dpe (DPE détaillé pour ML J5 + Mode Projet)
+    """
+    logger.info(f"Consolidation public_data.buildings depuis bdnb_2025_07_a_open_data_dep{dept}")
+    _apply_template("003_consolidate_buildings_dept.sql.template", dept, env)
+    cnt_b = psql_command(
         ["-At", "-c", f"SELECT count(*) FROM public_data.buildings WHERE dept = '{dept}';"],
         env,
     )
-    cnt = count_result.stdout.strip() if count_result.returncode == 0 else "?"
-    logger.info(f"✅ Dept {dept} : {cnt} lignes dans public_data.buildings")
+    logger.info(f"✅ Dept {dept} buildings : {cnt_b.stdout.strip() if cnt_b.returncode == 0 else '?'} lignes")
+
+    logger.info(f"Consolidation public_data.dpe depuis bdnb_2025_07_a_open_data_dep{dept}")
+    _apply_template("005_consolidate_dpe_dept.sql.template", dept, env)
+    cnt_d = psql_command(
+        ["-At", "-c", f"SELECT count(*) FROM public_data.dpe WHERE dept = '{dept}';"],
+        env,
+    )
+    logger.info(f"✅ Dept {dept} dpe      : {cnt_d.stdout.strip() if cnt_d.returncode == 0 else '?'} lignes")
 
 
 def main() -> int:

@@ -1,0 +1,71 @@
+-- ConX — Template consolidation DPE par département (instancié par ingest_bdnb.py).
+-- Remplace {DEPT} par le code département.
+-- Charge depuis bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe_dpe_representatif_logement
+-- et batiment_groupe_dpe_tertiaire. Dédupliqué par (building_id, identifiant_dpe).
+--
+-- IMPORTANT : ne charge QUE les DPE arrete_2021=true (coefficient EP électricité 1.9).
+-- Validation empirique dpt 02 : 100% des DPE BDNB sont déjà arrete_2021, donc en pratique pas de filtre.
+
+INSERT INTO public_data.dpe (
+    building_id, rnb_id, identifiant_dpe, dept, type_dpe,
+    type_batiment_dpe, arrete_2021,
+    surface_habitable_logement, surface_habitable_immeuble,
+    nombre_niveau_logement, nombre_niveau_immeuble,
+    classe_bilan_dpe, classe_emission_ges,
+    conso_5_usages_ep_m2_an, conso_5_usages_ef_m2_an, emission_ges_5_usages_m2_an,
+    type_installation_chauffage, type_energie_chauffage, type_generateur_chauffage, chauffage_solaire,
+    type_installation_ecs, type_energie_ecs, ecs_solaire,
+    type_ventilation,
+    type_vitrage, type_materiaux_menuiserie, uw,
+    materiaux_structure_mur_exterieur, type_isolation_mur_exterieur, u_mur_exterieur,
+    type_isolation_plancher_bas, type_isolation_plancher_haut,
+    date_etablissement_dpe, date_reception_dpe
+)
+SELECT
+    dpe.batiment_groupe_id, NULL, dpe.identifiant_dpe, '{DEPT}', 'logement',
+    dpe.type_batiment_dpe, dpe.arrete_2021,
+    dpe.surface_habitable_logement, dpe.surface_habitable_immeuble,
+    dpe.nombre_niveau_logement, dpe.nombre_niveau_immeuble,
+    public_data.normalize_dpe_classe(dpe.classe_bilan_dpe),
+    public_data.normalize_dpe_classe(dpe.classe_emission_ges),
+    dpe.conso_5_usages_ep_m2, dpe.conso_5_usages_ef_m2, dpe.emission_ges_5_usages_m2,
+    dpe.type_installation_chauffage, dpe.type_energie_chauffage, dpe.type_generateur_chauffage, dpe.chauffage_solaire,
+    dpe.type_installation_ecs, dpe.type_energie_ecs, dpe.ecs_solaire,
+    dpe.type_ventilation,
+    dpe.type_vitrage, dpe.type_materiaux_menuiserie, dpe.uw,
+    dpe.materiaux_structure_mur_exterieur, dpe.type_isolation_mur_exterieur, dpe.u_mur_exterieur,
+    dpe.type_isolation_plancher_bas, dpe.type_isolation_plancher_haut,
+    dpe.date_etablissement_dpe, dpe.date_reception_dpe
+FROM bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe_dpe_representatif_logement dpe
+WHERE dpe.identifiant_dpe IS NOT NULL
+  AND dpe.classe_bilan_dpe IS NOT NULL
+  AND EXISTS (SELECT 1 FROM public_data.buildings b WHERE b.building_id = dpe.batiment_groupe_id)
+ON CONFLICT (building_id, identifiant_dpe) DO NOTHING;
+
+-- DPE tertiaires (table séparée dans BDNB, attributs renommés _dpe_tertiaire)
+INSERT INTO public_data.dpe (
+    building_id, identifiant_dpe, dept, type_dpe, arrete_2021,
+    classe_bilan_dpe, classe_emission_ges,
+    conso_5_usages_ep_m2_an, emission_ges_5_usages_m2_an,
+    surface_habitable_logement,
+    type_energie_chauffage, type_energie_ecs,
+    date_etablissement_dpe, date_reception_dpe
+)
+SELECT
+    bgt.batiment_groupe_id,
+    bgt.identifiant_dpe,
+    '{DEPT}',
+    'tertiaire',
+    NULL,                                      -- arrete_2021 pas exposé dans cette table
+    public_data.normalize_dpe_classe(bgt.classe_conso_energie_dpe_tertiaire),
+    public_data.normalize_dpe_classe(bgt.classe_emission_ges_dpe_tertiaire),
+    bgt.conso_dpe_tertiaire_ep_m2,
+    bgt.emission_ges_dpe_tertiaire_m2,
+    bgt.surface_utile,                         -- surface utile au sens DPE tertiaire
+    bgt.type_energie_chauffage, bgt.type_energie_ecs,
+    bgt.date_etablissement_dpe, bgt.date_reception_dpe
+FROM bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe_dpe_tertiaire bgt
+WHERE bgt.identifiant_dpe IS NOT NULL
+  AND bgt.classe_conso_energie_dpe_tertiaire IS NOT NULL
+  AND EXISTS (SELECT 1 FROM public_data.buildings b WHERE b.building_id = bgt.batiment_groupe_id)
+ON CONFLICT (building_id, identifiant_dpe) DO NOTHING;

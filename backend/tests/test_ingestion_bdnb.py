@@ -158,3 +158,65 @@ def test_surface_positive(db):
         """)
         outliers = cur.fetchone()[0]
         assert outliers == 0, f"{outliers} surfaces hors [0, 1M] m²"
+
+
+def test_dpe_table_exists(db):
+    """Table public_data.dpe existe avec ses index."""
+    with db.cursor() as cur:
+        cur.execute("""
+            SELECT count(*) FROM information_schema.tables
+            WHERE table_schema='public_data' AND table_name='dpe';
+        """)
+        assert cur.fetchone()[0] == 1, "Table public_data.dpe absente"
+
+        cur.execute("""
+            SELECT indexname FROM pg_indexes
+            WHERE schemaname='public_data' AND tablename='dpe';
+        """)
+        names = {r[0] for r in cur.fetchall()}
+        assert "idx_dpe_building_id" in names
+        assert "idx_dpe_classe" in names
+
+
+def test_dpe_types_canoniques(db):
+    """type_dpe ∈ {'logement', 'tertiaire'}."""
+    with db.cursor() as cur:
+        cur.execute("SELECT DISTINCT type_dpe FROM public_data.dpe WHERE type_dpe IS NOT NULL;")
+        vals = {r[0] for r in cur.fetchall()}
+        if not vals:
+            pytest.skip("Aucun DPE ingéré encore")
+        invalid = vals - {"logement", "tertiaire"}
+        assert not invalid, f"type_dpe inattendus : {invalid}"
+
+
+def test_dpe_arrete_2021_logements(db):
+    """Tous les DPE logement non-nuls doivent être arrete_2021=true (coefficient EP élec 1.9)."""
+    with db.cursor() as cur:
+        cur.execute("""
+            SELECT count(*) FILTER (WHERE arrete_2021 = false) AS bad,
+                   count(*) FILTER (WHERE arrete_2021 = true) AS good,
+                   count(*) AS total
+            FROM public_data.dpe WHERE type_dpe='logement';
+        """)
+        bad, good, total = cur.fetchone()
+        if total == 0:
+            pytest.skip("Aucun DPE logement ingéré encore")
+        assert bad == 0, (
+            f"{bad} DPE logements avec arrete_2021=false trouvés "
+            "(BDNB 2025-07.a est censé n'avoir que des DPE arrête 2021)"
+        )
+        assert good > 0, "Aucun DPE logement avec arrete_2021=true"
+
+
+def test_dpe_idempotence(db):
+    """La contrainte UNIQUE (building_id, identifiant_dpe) empêche les duplicates."""
+    with db.cursor() as cur:
+        cur.execute("""
+            SELECT building_id, identifiant_dpe, count(*) AS dup
+            FROM public_data.dpe
+            GROUP BY building_id, identifiant_dpe
+            HAVING count(*) > 1
+            LIMIT 1;
+        """)
+        row = cur.fetchone()
+        assert row is None, f"Duplicate DPE détecté : {row}"

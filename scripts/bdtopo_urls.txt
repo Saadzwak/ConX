@@ -1,0 +1,15 @@
+# ConX — URLs BD TOPO IGN par département HDF.
+# Format : <dept> <url>
+# À COMPLÉTER par le partenaire (les URLs ne sont pas exposées par API).
+# Source : https://geoservices.ign.fr/telechargement (interactive) ou https://cartes.gouv.fr/
+# Format souhaité : GeoPackage (.gpkg) édition décembre 2025 ou janvier 2026.
+#
+# Pattern d'URL typique IGN :
+#   https://data.geopf.fr/telechargement/download/BDTOPO/BDTOPO_<X>_GPKG_LAMB93_D0<XX>_<YYYY-MM-DD>/...7z
+#
+# Hauts-de-France (5 départements) — à remplir :
+02 TODO_BDTOPO_DEP02_URL
+59 TODO_BDTOPO_DEP59_URL
+60 TODO_BDTOPO_DEP60_URL
+62 TODO_BDTOPO_DEP62_URL
+80 TODO_BDTOPO_DEP80_URL

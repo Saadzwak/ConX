@@ -405,3 +405,52 @@ On **n'demande pas** l'accès au web service INIES. La plateforme utilise **uniq
   ```
 - **Maintenance** : pour ajouter un matériau, on modifie le JSON et on commit. PR review obligatoire (cohérence avec la doctrine déterministe).
 - **Mention UI** : "Source FDES : INIES (base statique consultée le YYYY-MM-DD). Pour des données temps réel, consulter base-inies.fr."
+
+---
+
+## D-015 — J3 (DPE détaillé) intégré dans J2 (BDNB), pas d'ingestion ADEME séparée
+
+**Date** : 2026-05-21
+**Contexte** : J3 du plan initial = ingestion DPE depuis le dump ADEME (dpe-france-entiere.zip). Mais BDNB millésime 2025-07.a embarque déjà les DPE ADEME 2025-09 dans deux tables : `batiment_groupe_dpe_representatif_logement` et `batiment_groupe_dpe_tertiaire`.
+
+### Décision
+Consolider `public_data.dpe` directement depuis BDNB, sans ingestion ADEME séparée.
+
+### Justifications
+- **Pas de duplication** : un seul flux de données à maintenir.
+- **Cohérence des identifiants** : `building_id` consistant entre `buildings` et `dpe` (même source BDNB).
+- **Millésime DPE récent** : ADEME 2025-09, soit ~2 mois avant le millésime BDNB. Acceptable pour MVP.
+- **`arrete_2021=true` à 100 %** des DPE logements confirmé empiriquement sur dpt 02 (cf. BUILD_LOG Session 2) → coefficient 1.9 garanti.
+
+### Conséquences
+- Migration `004_create_dpe_detail.sql` : table `public_data.dpe` créée pendant J2.
+- Template `005_consolidate_dpe_dept.sql.template` : INSERT logements + tertiaires, ON CONFLICT DO NOTHING (contrainte UNIQUE `(building_id, identifiant_dpe)`).
+- `consolidate_dept()` dans `ingest_bdnb.py` applique 003 (buildings) puis 005 (DPE) successivement.
+- Plan jalons : J3 disparaît, J4 (BD TOPO routes) suit directement J2.
+- Si on a besoin de DPE plus récents post-démo (millésime ADEME postérieur au BDNB), on remettra une ingestion ADEME séparée.
+
+### Validation empirique
+- Dpt 02 : 34 960 DPE logement + 1 634 DPE tertiaire = 36 594 lignes, idempotent (UPSERT/ON CONFLICT DO NOTHING).
+- Dpt 60 : 50 937 DPE.
+- Test `test_dpe_arrete_2021_logements` : 100 % des logements `arrete_2021=true`.
+- Test `test_dpe_idempotence` : aucun duplicate `(building_id, identifiant_dpe)`.
+
+---
+
+## D-016 — Bornes sanity `annee_constr` : [1000, 2030], pas [1800, 2030]
+
+**Date** : 2026-05-21
+**Contexte** : tests d'invariants initialement bornés à `[1800, 2030]`. Inspection des données montre min=1200, max=2024 sur 3 dpts. 20 617 bâtiments pré-1800 (251 pré-1500) — patrimoine HDF légitime (abbayes cisterciennes, fermes flamandes, beffrois, églises romanes/gothiques).
+
+### Décision
+Bornes sanity de `annee_constr` : `[1000, 2030]`. Test `test_annee_constr_plausible` mis à jour. `scripts/db_status.py` affiche aussi un compteur séparé "patrimoine pré-1800" pour visibilité.
+
+### Justifications
+- **Réalité du parc bâti HDF** : la région compte ~80 abbayes médiévales (Saint-Bertin, Vaucelles, Loos…), ~120 beffrois UNESCO, des milliers de fermes en torchis/chaume du XVe-XVIIe.
+- **Données BDNB** : la BDNB hérite de `mut_date_creation_min` (cadastre) qui inscrit ces dates anciennes par tradition.
+- **Borne basse 1000** : antérieur = ruines/archéologie, pas du bâti habitable.
+
+### Conséquences
+- Test `test_annee_constr_plausible` borné `[1000, 2030]`.
+- `scripts/db_status.py` distingue "années hors borne" (= aberrant) et "patrimoine pré-1800" (= légitime).
+- **Pattern à retenir** : pour les seuils sanity, dériver de la donnée empirique (`min`/`max`/distribution), pas d'a priori. Les a priori projettent les habitudes du dev sur la réalité du domaine.

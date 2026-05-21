@@ -153,3 +153,54 @@ Décision **D-014** (2026-05-21) : **pas de demande d'accès API INIES, base sta
 3. Le `materiau_mur` BDNB est en texte libre (mat_mur_txt) — il faudra probablement le normaliser pour le ML/scoring. Mapping à faire en J5 ?
 4. Pour J3 : si BDNB intègre déjà DPE ADEME 2025-09, ai-je besoin d'ingestion DPE séparée ? Avantage : DPE plus récents que millésime BDNB. Inconvénient : duplique le travail.
 5. Vérification connexion Supabase (`scripts/verify_supabase_connection.py`) : à toi de la lancer quand tu rempliras le `.env` avec tes vraies credentials.
+
+---
+
+## 2026-05-21 — Session 3 (Jalons J2 finalisation + J3 intégré + J4 prep)
+
+**Heure début** : 2026-05-21 20:21 (lancement batch 4 dpts en arrière-plan)
+**Heure fin** : 2026-05-21 21:07 (dpt 59 re-run pour DPE + tests OK)
+**Objectif** : Finir J2 (4 dpts restants), ajouter DPE détaillé (J3) et préparer J4 (BD TOPO routes).
+
+### Totaux finaux J2 (5 dpts HDF)
+- **public_data.buildings : 3 122 513 lignes**
+  - 02 : 333 148 | 59 : 1 221 175 | 60 : 397 252 | 62 : 808 154 | 80 : 362 784
+- **public_data.dpe : 435 987 lignes** (417 353 logements + 18 634 tertiaires)
+  - 02 : 36 594 | 59 : 184 620 | 60 : 50 937 | 62 : 124 737 | 80 : 39 099
+- Distribution classes DPE : A=3 813, B=7 342, C=74 683, D=153 347, E=109 148, F=42 445, G=26 575 (passoires F+G = 69 020 = 2.2 %).
+- Distribution propriété : particulier 95 %, bailleur_social 4.2 %, personne_morale_privee 0.8 %.
+- Monuments Historiques : 2 346 (0.075 %).
+- Patrimoine pré-1800 : 28 922 bâtiments (médiéval/Renaissance, légitime en HDF).
+- Sanity : 0 géométrie invalide, SRID 2154, 0 année hors `[1000, 2030]`.
+- **14/14 tests d'invariants pytest passent en 29 s**.
+
+### Ce qui a marché
+- **J2 batch 4 dpts** lancé en arrière-plan, processus séparé par dpt (PID 1863). Dpt 59 : 1 221 175 bâtiments. Dpt 60 : 397 252 buildings + 50 937 DPE.
+- **J3 intégré dans J2** : table `public_data.dpe` créée (migration `004_create_dpe_detail.sql`) avec contrainte `UNIQUE (building_id, identifiant_dpe)`. Template `005_consolidate_dpe_dept.sql.template` insère logements + tertiaires depuis BDNB (qui embarque DPE ADEME 2025-09 — pas besoin d'ingestion ADEME séparée). 4 tests ajoutés : table+index, type_dpe canonique, `arrete_2021=true` à 100 % logements, idempotence via ON CONFLICT.
+- **J4 prep** : table `public_data.topo_roads` (migration `006`), script `ingest_bdtopo_roads.py` (ogr2ogr dans container `ghcr.io/osgeo/gdal:alpine-small-latest` joint au `conx_net`), `download_bdtopo.sh` + `bdtopo_urls.txt` (URLs à fournir par le partenaire).
+- **Refactor `consolidate_dept`** : split en `_apply_template` helper + appels successifs 003 (buildings) puis 005 (DPE). Testé bout-en-bout sur dpt 02 avant commit (333 148 buildings + 36 594 DPE = 34 960 logement + 1 634 tertiaire).
+- **`scripts/db_status.py`** : rapport read-only sur public_data (counts par dpt, distribution DPE, sanity).
+- **Disque** : 195 GB libres après batch en cours (seuil 30 GB largement respecté).
+
+### Ce qui n'a pas marché / corrigé en cours
+- **Bornes d'années [1800, 2030] erronées** : présumées a priori, sanity check montre min=1200, max=2024 dans la donnée réelle. 251 bâtiments pré-1500 (médiéval), 20 617 pré-1800 (patrimoine HDF légitime : abbayes, fermes, églises). Bornes corrigées en `[1000, 2030]` dans `test_annee_constr_plausible` et `scripts/db_status.py`. **Pattern à retenir : dériver les seuils sanity de la donnée, pas d'a priori.**
+- **Dpt 59 traité avec code ancien** : le batch démarré à 20:21 a importé l'ancien `consolidate_dept` (sans DPE) pour dpt 59. Les dpts 60/62/80 (processus Python fresh par itération `for`) ont importé le NOUVEAU. → dpt 59 à re-traiter post-batch (skip restore via idempotence, ~3 min consolidation pure).
+- **Émoji Unicode dans `db_status.py`** : `UnicodeEncodeError` sur Windows console cp1252 (📊 → '\U0001f4ca'). Remplacés par tags ASCII `[buildings]`, `[dpe]`, etc.
+
+### Décisions techniques internes
+- **J3 = sous-étape de J2**, pas un jalon distinct. BDNB millésime 2025-07.a contient déjà les DPE ADEME 2025-09 dans les tables `batiment_groupe_dpe_representatif_logement` et `batiment_groupe_dpe_tertiaire`. Pas de double ingestion.
+- **`arrete_2021=true` à 100 %** des DPE logements dpt 02 → confirme empiriquement le coefficient EP électricité 1.9 (cf. D-006 et BUILD_LOG Session 2).
+- **DPE tertiaire** : la colonne classe est `classe_conso_energie_dpe_tertiaire`, pas `classe_bilan_dpe`. Template 005 traite logements et tertiaires séparément.
+
+### Limitations connues (documentées, non bloquantes)
+- Dpt 59 a buildings sans DPE en `public_data.dpe` jusqu'à la re-passe (correction post-batch).
+- BD TOPO routes (J4) : URLs IGN non exposées en API publique, à compléter manuellement par le partenaire dans `scripts/bdtopo_urls.txt`. Le pipeline ogr2ogr est prêt.
+
+### Bloqueurs ouverts
+- Aucun nouveau. B-001 (TTL session Managed Agents) reste à tester en J10.
+
+### Prochaine étape (post-batch)
+- Re-runner `python scripts/ingest_bdnb.py 59` pour consolider DPE dpt 59 (~3 min). Vérifier log line `Schéma bdnb_*_dep59 déjà peuplé — restore skip` avant de s'engager.
+- Commit J2 final avec totaux 5 dpts.
+- J4 effectif : nécessite URLs BD TOPO du partenaire (5 dpts).
+- **STOP avant J5** (ML training) — arbitrage produit demandé.

@@ -93,9 +93,9 @@ def test_dept_distribution(db):
         cur.execute("SELECT dept, count(*) FROM public_data.buildings GROUP BY dept ORDER BY dept;")
         rows = cur.fetchall()
         depts = {r[0] for r in rows}
-        assert depts.issubset({"02", "59", "60", "62", "80"}), (
-            f"Départements inattendus : {depts - {'02', '59', '60', '62', '80'}}"
-        )
+        assert depts.issubset(
+            {"02", "59", "60", "62", "80"}
+        ), f"Départements inattendus : {depts - {'02', '59', '60', '62', '80'}}"
 
 
 def test_dpe_classes_valides(db):
@@ -138,15 +138,16 @@ def test_monument_historique_column_present(db):
 
 
 def test_annee_constr_plausible(db):
-    """Les années de construction doivent être dans [1800, 2030]."""
+    """Les années de construction doivent être dans [1000, 2030].
+    Borne basse 1000 pour accepter le patrimoine médiéval (églises, abbayes : ~20 k bâtiments pré-1800 en HDF)."""
     with db.cursor() as cur:
         cur.execute("""
             SELECT count(*) FROM public_data.buildings
             WHERE annee_constr IS NOT NULL
-              AND (annee_constr < 1800 OR annee_constr > 2030);
+              AND (annee_constr < 1000 OR annee_constr > 2030);
         """)
         outliers = cur.fetchone()[0]
-        assert outliers == 0, f"{outliers} années de construction hors [1800, 2030]"
+        assert outliers == 0, f"{outliers} années de construction hors [1000, 2030]"
 
 
 def test_surface_positive(db):

@@ -381,4 +381,12 @@ Tu ne décides JAMAIS seul sur :
 4. ✅ Rapport Supabase + Managed Agents (BUILD_LOG.md session 0)
 5. ✅ Rapport environnement (Python 3.12.10, Node 24.6, Docker 29.3, Git 2.53, 214.9 GB libres — **OK**)
 
-**J1 livré** (commit `e5da883`) : docker-compose `postgres_local` + PostGIS + backend stub + martin, scripts d'amorçage, CI. INIES : pas de demande API, base statique D-014. Prochain : J2 (ingestion BDNB) dès que les URLs sont remplies dans `scripts/download_bdnb.sh` et que le téléchargement est terminé.
+**J1 livré** (commit `e5da883`) : docker-compose `postgres_local` + PostGIS + backend stub + martin, scripts d'amorçage, CI. INIES : pas de demande API, base statique D-014.
+
+**J2 livré partiel** (commit `e748e64` puis `b498f38`) : ingestion BDNB dpts HDF, table `public_data.buildings` peuplée. 5 dpts en cours/finalisés (cf. BUILD_LOG Session 3).
+
+**J3 intégré dans J2** (D-015) : BDNB millésime 2025-07.a embarque déjà les DPE ADEME 2025-09. Pas d'ingestion ADEME séparée. Table `public_data.dpe` peuplée depuis `batiment_groupe_dpe_representatif_logement` et `batiment_groupe_dpe_tertiaire`.
+
+**J4 prêt** (commit `b498f38`) : table `public_data.topo_roads`, script `ingest_bdtopo_roads.py` (ogr2ogr via container GDAL), `download_bdtopo.sh`. URLs IGN BD TOPO à compléter par le partenaire dans `scripts/bdtopo_urls.txt` (non exposées en API).
+
+**Prochain** : J5 (ML estimation DPE) — **STOP demandé**, arbitrage produit avant lancement.

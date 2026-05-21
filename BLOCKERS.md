@@ -86,20 +86,21 @@ Donc même si `supabase-py` est sync, l'impact sur les perfs est négligeable (A
 ## B-003 — Accès API INIES
 
 **Date d'ouverture** : 2026-05-21
-**Statut** : OUVERT
-**Sévérité** : MINEUR (plan B en place)
-**Jalon impacté** : J9
+**Statut** : **RESOLU** 2026-05-21
+**Sévérité** : —
+**Jalon impacté** : J9 (simplifié)
 
-### Contexte
-INIES propose un web service sur demande d'accès (https://www.inies.fr/le-webservice/demander-un-acces/). Pas de garantie de délai de réponse.
+### Résolution (2026-05-21)
+**Décision partenaire** : on **n'demande pas l'accès** à l'API INIES. La plateforme part directement avec la **base statique versionnée `fdes_static.json`** dans le repo, contenant les 30 matériaux clés (bois CLT, ouate de cellulose, fibre de bois, chanvre, béton de chanvre, paille, brique terre crue, BTC, brique terre cuite, béton conventionnel, acier, aluminium, isolant minéral, double vitrage, triple vitrage, etc.).
 
-### Hypothèses
-- Demande envoyée en J1.
-- Si pas de réponse à J9, on bascule sur `fdes_static.json` versionné dans le repo (30 matériaux clés, numéros de déclaration FDES cités dans l'UI).
+L'UI cite la source par numéro de déclaration FDES : `Source : INIES, FDES n°XXX-X-XX (consulté le YYYY-MM-DD)`.
 
-### Décision attendue (à J9)
-- Si accès API obtenu : skill `fdes-lookup` consomme l'API.
-- Sinon : skill `fdes-lookup` lit le JSON statique. L'UI cite "Source : INIES, FDES n°XXX-X-XX (consulté le YYYY-MM-DD)".
+**Pas d'engagement administratif**, pas de dépendance externe, pas de fallback à coder. Voir D-014 pour la trace décisionnelle.
+
+### Conséquences
+- Skill `fdes-lookup` (J9) : **lit directement `fdes_static.json`**, pas de logique de fallback API→statique. Code simplifié.
+- Pas de demande à INIES envoyée. Le mail rédigé en J1 est abandonné (supprimé de BUILD_LOG.md).
+- La base statique sera maintenable manuellement ; pour ajouter un matériau, modifier le JSON et committer.
 
 ---
 

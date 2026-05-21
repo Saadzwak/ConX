@@ -102,7 +102,7 @@ Volume Docker (lu/écrit directement par FastAPI, séparé des bases) :
 | **BD TOPO** (IGN) | extrusions universelles HDF | Etalab 2.0 |
 | **BD Ortho** (IGN) | habillage photo aérienne WMTS streaming | Etalab 2.0 |
 | **BAN** | autocomplétion adresse + géocodage | Etalab 2.0 |
-| **INIES** | FDES carbone matériaux (API ou statique) | CGU INIES |
+| **INIES** | FDES carbone matériaux — **base statique uniquement** (D-014) | base statique versionnée |
 | **Base Carbone ADEME** | facteurs d'émission kWh→kgCO₂ | Etalab 2.0 |
 
 **Footer obligatoire** : `Données : IGN, CSTB (BDNB), ADEME (DPE, Base Carbone), INIES (FDES), DGFiP (BAN), Licence Ouverte Etalab 2.0`.
@@ -220,13 +220,13 @@ Ordre : **données → moteur → IA → frontend → polish**. Détail dans `~/
 
 | Jalons | Sujet |
 |---|---|
-| J1 | Setup repo + docker-compose (postgres_local + PostGIS) + vérification connexion à l'instance Supabase existante du partenaire + demande accès INIES + lancement async download BDNB |
+| J1 | Setup repo + docker-compose (postgres_local + PostGIS) + vérification connexion à l'instance Supabase existante du partenaire + lancement async download BDNB. *INIES : pas de demande API, base statique uniquement (D-014).* |
 | J2-J4 | Ingestion BDNB / DPE / BD TOPO sur HDF dans `postgres_local.public_data` |
 | J5 | Modèle ML estimation DPE (split spatial par commune), modèle stocké dans `./data/storage/ml/` |
 | J6 | Calcul carbone déterministe |
 | J7 | Tuilage MVT régional via martin (lit `postgres_local` directement) |
 | J8 | Pipeline LiDAR (download + tile + glTF on-demand, pré-gen 5-10 bât. démo), fichiers dans `./data/storage/lidar/` |
-| J9 | Skills bundles (carbon-calc, fdes-lookup avec `fdes_static.json`, ifc-check, horssite-biosource, re2020-target, pmr-checks). **Test critique** : créer un environment Anthropic test avec `packages: {pip: ['ifcopenshell']}` et vérifier `import ifcopenshell; print(ifcopenshell.version)`. Si échec (binaire C++/OpenCASCADE non-trivial), bascule en endpoint backend HTTP (comme PostGIS), pas en skill bundle. |
+| J9 | Skills bundles : carbon-calc, **fdes-lookup (lecture directe de `data/fdes_static.json`, pas de fallback API — D-014)**, ifc-check, horssite-biosource, re2020-target, pmr-checks. **Test critique ifcopenshell** : créer un environment Anthropic test avec `packages: {pip: ['ifcopenshell']}` et vérifier `import ifcopenshell; print(ifcopenshell.version)`. Si échec (binaire C++/OpenCASCADE non-trivial), bascule en endpoint backend HTTP (comme PostGIS), pas en skill bundle. **Création de `data/fdes_static.json`** : 30 matériaux clés (bois CLT, ouate cellulose, fibre bois, chanvre, béton de chanvre, paille, brique terre crue, BTC, brique terre cuite, béton, acier, aluminium, isolants minéraux, vitrages) avec numéros de déclaration FDES. |
 | J10 | 3 Managed Agents créés + **test TTL session 10 min** (B-001) |
 | J11 | Backend Mode Stratégie + Supabase Auth + RLS sur les tables `app` (côté Supabase Cloud uniquement) |
 | J12 | Backend Mode Projet (chat itératif, reprise session). Plans persistés dans `app.renovation_plans` (Supabase) ; fiche bâtiment lue depuis `public_data.buildings` (local) |
@@ -340,7 +340,7 @@ Tu ne décides JAMAIS seul sur :
 | R6 | Perf viewer 3D 1,5 M bât. | LOD strict + MVT pré-générées |
 | R7 | Limites API Anthropic | Pré-warmup démo + cache fallback |
 | R8 | Latence Agent Plan > 60 s | SSE visible en live + cache pré-démo |
-| R9 | INIES API inaccessible | Base statique fallback (B-003) |
+| R9 | ~~INIES API inaccessible~~ | **Résolu D-014** : pas d'API, base statique uniquement |
 | R10 | DPE réels manquants | ML estimation + matching RNB |
 | R11 | CGU IGN modifiées | Etalab 2.0 confirmé |
 | R12 | Coût Anthropic | Budget + monitoring quotidien |
@@ -355,7 +355,7 @@ Tu ne décides JAMAIS seul sur :
 |---|---|---|---|
 | B-001 | TTL session Managed Agents | IMPACT MAJEUR | J10 (test E2E) |
 | B-002 | Maturité asyncio supabase-py | MINEUR | J11 (test) |
-| B-003 | Accès API INIES | MINEUR | J9 (fallback prêt) |
+| ~~B-003~~ | ~~Accès API INIES~~ | RESOLU 2026-05-21 | — (cf. D-014) |
 | B-004 | Hébergement applicatif final | MINEUR | J19 (arbitrage partenaire) |
 
 ---
@@ -368,4 +368,4 @@ Tu ne décides JAMAIS seul sur :
 4. ✅ Rapport Supabase + Managed Agents (BUILD_LOG.md session 0)
 5. ✅ Rapport environnement (Python 3.12.10, Node 24.6, Docker 29.3, Git 2.53, 214.9 GB libres — **OK**)
 
-**Sur GO final partenaire** : démarrer J1 — docker-compose avec `postgres_local` + PostGIS, vérification connexion Supabase existante, demande accès INIES, lancement async download BDNB 5 dpts en tâche de fond.
+**J1 livré** (commit `e5da883`) : docker-compose `postgres_local` + PostGIS + backend stub + martin, scripts d'amorçage, CI. INIES : pas de demande API, base statique D-014. Prochain : J2 (ingestion BDNB) dès que les URLs sont remplies dans `scripts/download_bdnb.sh` et que le téléchargement est terminé.

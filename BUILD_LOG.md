@@ -93,49 +93,10 @@ Format d'entrée : date, durée réelle vs estimée, ce qui a marché, ce qui a 
 - B-001 (TTL session Managed Agents, J10).
 - B-003 (API INIES — voir mail ci-dessous).
 
-### Mail INIES à envoyer par le partenaire
-
-> **À envoyer manuellement depuis l'adresse email du partenaire — pas d'envoi automatique.**
-> Destinataire suggéré : formulaire https://www.inies.fr/le-webservice/demander-un-acces/ (ou direct : contact INIES via le site).
->
-> **Objet** : Demande d'accès au web service INIES — projet ConX (rénovation énergétique hors-site Hauts-de-France)
->
-> ---
->
-> Bonjour,
->
-> Je sollicite un accès au web service INIES dans le cadre du projet **ConX**, plateforme IA d'aide à la décision pour la rénovation énergétique hors-site décarbonée à l'échelle des Hauts-de-France.
->
-> **Le projet en bref** :
-> ConX est développé dans le cadre du concours "IA pour le Bâtiment" organisé par le CD2E (pôle régional éco-transition Hauts-de-France) et EuraTechnologies. La plateforme combine les bases de données publiques françaises (BDNB / CSTB, DPE / ADEME, LiDAR HD et BD TOPO / IGN) avec les agents IA Anthropic Claude pour :
-> 1. Identifier et scorer les bâtiments prioritaires à rénover par typologie hors-site (collectivités, bailleurs sociaux, foncières).
-> 2. Générer des plans de rénovation hors-site biosourcée (bois, chanvre, paille, ouate de cellulose…) avec bilan carbone complet.
-> 3. Pré-vérifier la conformité RE2020 et PMR des propositions IFC remises par les entreprises.
->
-> **Usage des FDES INIES envisagé** :
-> Calcul du carbone incorporé des matériaux dans les plans de rénovation générés, avec affichage transparent dans l'interface utilisateur du numéro de déclaration FDES, de la valeur kgCO₂eq/UF et de l'unité fonctionnelle. Environ 30 matériaux clés seraient consommés en consultation programmatique au cours du calcul (bois CLT, ouate cellulose, fibre bois, chanvre, paille, terre crue, brique terre cuite, béton, acier, vitrages…).
->
-> **Volumétrie** :
-> Faible. Quelques dizaines de requêtes par session utilisateur, pas de scraping massif.
->
-> **Cadre juridique** :
-> Je souhaiterais clarifier les conditions d'usage commercial éventuel des données du web service, ConX ayant vocation à être proposé à terme aux collectivités et bailleurs en abonnement.
->
-> **Contact technique** :
-> [coordonnées du partenaire à compléter par lui-même]
->
-> **Site projet** :
-> [URL à compléter quand disponible]
->
-> Je reste à disposition pour toute précision sur l'intégration technique envisagée ou le cadrage du projet.
->
-> Bien cordialement,
-> [signature du partenaire]
->
-> ---
+### INIES
+Décision **D-014** (2026-05-21) : **pas de demande d'accès API INIES, base statique uniquement** (`data/fdes_static.json` versionné dans le repo). 30 matériaux clés FDES, citation par numéro de déclaration dans l'UI. B-003 résolu. Le mail INIES initialement rédigé a été supprimé de ce log — la décision documentée suffit.
 
 ### Prochaine étape
-- Téléchargement BDNB lancé en tâche de fond (URLs à compléter dans le script au premier run).
-- Vérification connexion Supabase à lancer par le partenaire (`python scripts/verify_supabase_connection.py`).
-- Envoi du mail INIES par le partenaire.
+- Téléchargement BDNB : à lancer par le partenaire après complétion des URLs dans `scripts/download_bdnb.sh` (visite manuelle de https://bdnb.io/download/ pour récupérer les URLs exactes par département).
+- Vérification connexion Supabase à lancer par le partenaire (`python scripts/verify_supabase_connection.py`) après remplissage du `.env`.
 - Sur OK : J2 (ingestion BDNB dans `postgres_local.public_data`).

@@ -353,3 +353,55 @@ python scripts/update_tunnel_url.py
 - `.env.example` documente `NGROK_PUBLIC_URL`.
 - En prod (hors démo) : on remplace ngrok par l'URL réelle de l'hébergement, sans changer le code (juste la variable d'env).
 - Pas d'engagement payant ngrok pour le MVP.
+
+---
+
+## D-014 — Pas d'accès API INIES, base statique FDES uniquement
+
+**Date** : 2026-05-21
+**Statut** : VALIDE
+**Catégorie** : Data / Process
+**Résout** : B-003
+
+### Décision
+On **n'demande pas** l'accès au web service INIES. La plateforme utilise **uniquement** une base statique versionnée `data/fdes_static.json` contenant les 30 matériaux clés pour la rénovation hors-site biosourcée. Citation FDES par numéro de déclaration dans l'UI.
+
+### Options envisagées
+- A : Demande API INIES en J1, fallback statique si pas de réponse → complexifie le code (logique de fallback), introduit une dépendance externe et un risque calendaire.
+- B : **Base statique uniquement** (retenu) → autonomie complète, code simple, pas d'engagement administratif.
+- C : Scraping INIES → exclu (CGU pas claires, fragile, risque juridique).
+
+### Motif du choix
+- **Autonomie complète** : aucune dépendance externe au déploiement ni à la démo.
+- **Pas d'engagement administratif** : pas de mail à envoyer, pas d'attente de réponse, pas de CGU commerciale à négocier en MVP.
+- **Plan B largement suffisant** pour le MVP : 30 matériaux clés couvrent l'essentiel des choix biosourcés que l'Agent Plan recommandera.
+- **Code simplifié** : skill `fdes-lookup` lit directement le JSON, pas de logique de fallback.
+- **Traçabilité** : citation systématique du numéro de déclaration FDES + date de consultation dans l'UI et les PDF rapports.
+
+### Conséquences
+- **B-003 RÉSOLU**.
+- **J9 simplifié** : skill `fdes-lookup` = lecture directe `fdes_static.json`, pas de branche API.
+- **Mail INIES abandonné** : retiré de BUILD_LOG.md J1.
+- **Format `data/fdes_static.json`** à définir en J9. Structure prévue :
+  ```json
+  {
+    "version": "1.0",
+    "source": "INIES (https://base-inies.fr/)",
+    "consulted_at": "2026-MM-DD",
+    "materials": [
+      {
+        "id": "bois-clt",
+        "name": "Bois CLT",
+        "fdes_declaration_id": "XXX-X-XX",
+        "kgCO2eq_per_uf": 12.5,
+        "uf_description": "1 m² de paroi de 100 mm d'épaisseur",
+        "duration_years": 100,
+        "biogenic_co2_stored_kg": -45.0,
+        "category": "biosource",
+        "notes": "..."
+      }
+    ]
+  }
+  ```
+- **Maintenance** : pour ajouter un matériau, on modifie le JSON et on commit. PR review obligatoire (cohérence avec la doctrine déterministe).
+- **Mention UI** : "Source FDES : INIES (base statique consultée le YYYY-MM-DD). Pour des données temps réel, consulter base-inies.fr."

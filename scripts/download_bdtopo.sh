@@ -59,7 +59,7 @@ while IFS= read -r line; do
     ok=0
     while (( attempt < RETRIES )); do
         attempt=$((attempt + 1))
-        if curl -fL -C - --connect-timeout 30 --max-time 7200 -o "$dest" "$url" --progress-bar; then
+        if curl -fL -C - --connect-timeout 30 --max-time 7200 -o "$dest" "$url" -s; then
             touch "$dest.done"
             log "✅ $dept terminé ($(du -h "$dest" | cut -f1))"
             ok=1

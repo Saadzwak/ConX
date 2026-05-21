@@ -27,6 +27,12 @@ loguru==0.7.3
 # HTTP client (BAN, ngrok update, etc.)
 httpx==0.28.1
 
+# Décompression 7z (BD TOPO IGN livre en .7z — cf. scripts/ingest_bdtopo.py)
+py7zr==1.1.0
+
+# Configuration YAML (scoring_thresholds.yaml — cf. backend/app/scoring/compute.py)
+PyYAML==6.0.2
+
 # Tests
 pytest==8.3.4
 pytest-asyncio==0.25.0

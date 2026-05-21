@@ -1,0 +1,92 @@
+# ConX — Seuils de scoring (cf. docs/SCORING.md §"Configuration globale").
+# VERSION : 1.0 (2026-05-21)
+# Toute modification doit passer par validation partenaire (D-006 : formule gravée).
+# Le hash sha256-short de ce fichier est stocké dans building_scores.thresholds_version.
+
+version: "1.0"
+
+# --- Composante S_co2 ---
+co2:
+  max_tonnes_30ans: 500      # seuil saturation (cf. SCORING.md §Composante 1)
+
+# --- Composante S_cout ---
+cost:
+  min_eur_per_tco2: 500       # score 1 (très efficient)
+  max_eur_per_tco2: 5000      # score 0 (peu efficient)
+
+# --- Cible énergétique ---
+target_class:
+  default: "B"
+  kwh_ep_m2_an: 90            # cible classe B par défaut
+
+horizon_amortissement_ans: 30
+
+# --- Facteurs d'émission Base Carbone ADEME (kgCO2/kWh) ---
+energy_emission_factors:
+  electricite: 0.057
+  gaz: 0.227
+  fioul: 0.324
+  rcu: 0.110                  # réseau de chaleur urbain (moyenne nationale)
+  bois: 0.030
+  default: 0.227              # fallback (= gaz, conservateur)
+
+# --- Coûts de rénovation par typologie (€/m² TTC, indicatif ADEME) ---
+cost_table_eur_m2:
+  residentiel_collectif:
+    avant_1948: 600
+    1948_1974: 550
+    1975_2000: 450
+    apres_2000: 350
+  pavillon:
+    avant_1948: 800
+    1948_1974: 700
+    1975_2000: 550
+    apres_2000: 400
+  tertiaire_bureaux:
+    toutes: 500
+  tertiaire_commerce:
+    toutes: 450
+  default:
+    toutes: 600               # fallback (= résidentiel collectif avant 1948)
+
+# Modulateurs coût (cf. SCORING.md §Composante 3)
+cost_modulators:
+  geometrie_simple: 1.00
+  geometrie_complexe: 1.15
+  patrimoine: 1.30
+
+# --- Composante S_faisa : pondération interne sous-indicateurs (somme = 1.0) ---
+faisa_weights:
+  toiture_reguliere: 0.25
+  acces_chantier: 0.20
+  hauteur_compatible: 0.15
+  absence_patrimoine: 0.20
+  geometrie_simple: 0.10
+  type_compatible: 0.10
+
+# --- Composante S_social : table type_proprietaire → score ---
+social_table:
+  bailleur_social: 1.00
+  public: 0.80
+  personne_morale_privee: 0.50
+  particulier: 0.30
+  unknown: 0.40
+
+# --- Composante S_passoire : table classe DPE → score ---
+passoire_table:
+  A: 0.00
+  B: 0.00
+  C: 0.00
+  D: 0.00
+  E: 0.50
+  F: 1.00
+  G: 1.00
+
+# --- Poids globaux (DÉFAUT validés partenaire 2026-05-21) ---
+# Ajustables via sliders UI. Somme = 1.00. (D-006 fige les défauts.)
+weights_default:
+  w_co2: 0.35
+  w_faisa: 0.25
+  w_cout: 0.20
+  w_social: 0.10
+  w_passoire: 0.10

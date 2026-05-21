@@ -71,7 +71,9 @@ def main() -> int:
     # 2. Endpoint Supabase joignable
     try:
         with httpx.Client(timeout=10) as client:
-            r = client.get(f"{supabase_url}/auth/v1/health", headers={"apikey": anon_key})
+            r = client.get(
+                f"{supabase_url}/auth/v1/health", headers={"apikey": anon_key}
+            )
         _check(
             f"Endpoint Supabase joignable ({supabase_url})",
             r.status_code in (200, 404),  # 404 acceptable selon le tier

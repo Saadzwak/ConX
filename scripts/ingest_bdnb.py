@@ -135,7 +135,9 @@ def find_dump_file(extracted_dir: Path) -> Path:
         raise FileNotFoundError(f"Aucun dump trouvé dans {extracted_dir}")
     # Trie par taille décroissante (le plus gros est typiquement le dump principal)
     candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
-    logger.info(f"Dump file détecté : {candidates[0]} ({candidates[0].stat().st_size / 1e9:.2f} GB)")
+    logger.info(
+        f"Dump file détecté : {candidates[0]} ({candidates[0].stat().st_size / 1e9:.2f} GB)"
+    )
     return candidates[0]
 
 
@@ -161,8 +163,14 @@ def restore_dump(dump: Path, dept: str, env: dict[str, str]) -> None:
         f"WHERE n.nspname='{schema}' AND c.relkind='r';"
     )
     check = psql_command(["-At", "-c", check_sql], env)
-    if check.returncode == 0 and check.stdout.strip().isdigit() and int(check.stdout.strip()) > 0:
-        logger.info(f"Schéma {schema} déjà peuplé ({check.stdout.strip()} tables) — restore skip.")
+    if (
+        check.returncode == 0
+        and check.stdout.strip().isdigit()
+        and int(check.stdout.strip()) > 0
+    ):
+        logger.info(
+            f"Schéma {schema} déjà peuplé ({check.stdout.strip()} tables) — restore skip."
+        )
         return
 
     container = os.environ.get("CONX_POSTGRES_CONTAINER", "conx_postgres")
@@ -174,8 +182,12 @@ def restore_dump(dump: Path, dept: str, env: dict[str, str]) -> None:
             "tel que livré par bdnb.io (millésime 2025-07.a). À étendre si nécessaire."
         )
 
-    logger.info(f"Copie du dump {dump} ({dump.stat().st_size / 1e9:.2f} GB) dans le container...")
-    subprocess.run(["docker", "cp", str(dump), f"{container}:{container_path}"], check=True)
+    logger.info(
+        f"Copie du dump {dump} ({dump.stat().st_size / 1e9:.2f} GB) dans le container..."
+    )
+    subprocess.run(
+        ["docker", "cp", str(dump), f"{container}:{container_path}"], check=True
+    )
 
     logger.info(f"Restore SQL plain dans {schema} (peut prendre 5-15 min selon dpt)...")
     cmd = [
@@ -197,13 +209,17 @@ def restore_dump(dump: Path, dept: str, env: dict[str, str]) -> None:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        logger.warning(f"psql exit {result.returncode} (warnings non-bloquants attendus)")
+        logger.warning(
+            f"psql exit {result.returncode} (warnings non-bloquants attendus)"
+        )
         if result.stderr:
             stderr_tail = result.stderr[-2000:]
             logger.warning(f"stderr (last 2000 chars):\n{stderr_tail}")
 
     # Cleanup du fichier dans le container
-    subprocess.run(["docker", "exec", container, "rm", "-f", container_path], check=False)
+    subprocess.run(
+        ["docker", "exec", container, "rm", "-f", container_path], check=False
+    )
 
     logger.info(f"Restore terminé pour {schema}")
 
@@ -237,14 +253,18 @@ def inspect_schema(schema: str, env: dict[str, str]) -> list[tuple[str, str, int
 
 def apply_migrations(env: dict[str, str]) -> None:
     """Applique les fichiers SQL de scripts/sql/migrations/ dans l'ordre (.sql uniquement, pas .template)."""
-    migrations = sorted(p for p in SQL_MIGRATIONS_DIR.glob("*.sql") if not p.name.endswith(".template"))
+    migrations = sorted(
+        p for p in SQL_MIGRATIONS_DIR.glob("*.sql") if not p.name.endswith(".template")
+    )
     container = os.environ.get("CONX_POSTGRES_CONTAINER", "conx_postgres")
     for m in migrations:
         logger.info(f"Migration {m.name}")
         if using_docker_exec():
             # Copie + exec dans le container
             target = f"/tmp/{m.name}"
-            subprocess.run(["docker", "cp", str(m), f"{container}:{target}"], check=True)
+            subprocess.run(
+                ["docker", "cp", str(m), f"{container}:{target}"], check=True
+            )
             result = subprocess.run(
                 [
                     "docker",
@@ -266,7 +286,9 @@ def apply_migrations(env: dict[str, str]) -> None:
                 text=True,
                 check=False,
             )
-            subprocess.run(["docker", "exec", container, "rm", "-f", target], check=False)
+            subprocess.run(
+                ["docker", "exec", container, "rm", "-f", target], check=False
+            )
             if result.returncode != 0:
                 logger.error(f"Migration {m.name} failed: {result.stderr[-1000:]}")
                 raise RuntimeError(f"Migration {m.name} failed")
@@ -303,7 +325,9 @@ def ingest_department(dept: str, inspect_only: bool = False) -> bool:
     tables = inspect_schema(schema, env)
     logger.info(f"--- Schéma {schema} : {len(tables)} tables/vues ---")
     for name, kind, est_rows in tables[:30]:
-        kind_label = {"r": "table", "v": "view", "m": "matview", "p": "partition"}.get(kind, kind)
+        kind_label = {"r": "table", "v": "view", "m": "matview", "p": "partition"}.get(
+            kind, kind
+        )
         logger.info(f"  {kind_label:8s} {name:50s} ~{est_rows:>10,} rows")
     if len(tables) > 30:
         logger.info(f"  ... +{len(tables) - 30} autres")
@@ -336,7 +360,9 @@ def _apply_template(template_name: str, dept: str, env: dict[str, str]) -> None:
     if using_docker_exec():
         container = os.environ.get("CONX_POSTGRES_CONTAINER", "conx_postgres")
         target = f"/tmp/{tmp_path.name}"
-        subprocess.run(["docker", "cp", str(tmp_path), f"{container}:{target}"], check=True)
+        subprocess.run(
+            ["docker", "cp", str(tmp_path), f"{container}:{target}"], check=True
+        )
         result = subprocess.run(
             [
                 "docker",
@@ -377,27 +403,48 @@ def consolidate_dept(dept: str, env: dict[str, str]) -> None:
     - 003 : public_data.buildings
     - 005 : public_data.dpe (DPE détaillé pour ML J5 + Mode Projet)
     """
-    logger.info(f"Consolidation public_data.buildings depuis bdnb_2025_07_a_open_data_dep{dept}")
+    logger.info(
+        f"Consolidation public_data.buildings depuis bdnb_2025_07_a_open_data_dep{dept}"
+    )
     _apply_template("003_consolidate_buildings_dept.sql.template", dept, env)
     cnt_b = psql_command(
-        ["-At", "-c", f"SELECT count(*) FROM public_data.buildings WHERE dept = '{dept}';"],
+        [
+            "-At",
+            "-c",
+            f"SELECT count(*) FROM public_data.buildings WHERE dept = '{dept}';",
+        ],
         env,
     )
-    logger.info(f"✅ Dept {dept} buildings : {cnt_b.stdout.strip() if cnt_b.returncode == 0 else '?'} lignes")
+    logger.info(
+        f"✅ Dept {dept} buildings : {cnt_b.stdout.strip() if cnt_b.returncode == 0 else '?'} lignes"
+    )
 
-    logger.info(f"Consolidation public_data.dpe depuis bdnb_2025_07_a_open_data_dep{dept}")
+    logger.info(
+        f"Consolidation public_data.dpe depuis bdnb_2025_07_a_open_data_dep{dept}"
+    )
     _apply_template("005_consolidate_dpe_dept.sql.template", dept, env)
     cnt_d = psql_command(
         ["-At", "-c", f"SELECT count(*) FROM public_data.dpe WHERE dept = '{dept}';"],
         env,
     )
-    logger.info(f"✅ Dept {dept} dpe      : {cnt_d.stdout.strip() if cnt_d.returncode == 0 else '?'} lignes")
+    logger.info(
+        f"✅ Dept {dept} dpe      : {cnt_d.stdout.strip() if cnt_d.returncode == 0 else '?'} lignes"
+    )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Ingestion BDNB par département")
-    parser.add_argument("dept", nargs="?", default=None, help="Code dpt (02/59/60/62/80) ou rien pour tous")
-    parser.add_argument("--inspect-only", action="store_true", help="Restore + inspect, pas de consolidation")
+    parser.add_argument(
+        "dept",
+        nargs="?",
+        default=None,
+        help="Code dpt (02/59/60/62/80) ou rien pour tous",
+    )
+    parser.add_argument(
+        "--inspect-only",
+        action="store_true",
+        help="Restore + inspect, pas de consolidation",
+    )
     args = parser.parse_args()
 
     depts = [args.dept] if args.dept else DEFAULT_DEPTS

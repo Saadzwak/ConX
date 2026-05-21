@@ -24,7 +24,9 @@ def main() -> int:
 
     if not ngrok_url:
         print("❌ NGROK_PUBLIC_URL non défini dans .env")
-        print("   Démarre ngrok : ngrok http 8000, puis copie l'URL https://...ngrok-free.app")
+        print(
+            "   Démarre ngrok : ngrok http 8000, puis copie l'URL https://...ngrok-free.app"
+        )
         return 1
 
     print(f"*  NGROK_PUBLIC_URL = {ngrok_url}")
@@ -43,7 +45,9 @@ def main() -> int:
     #     # Update du system prompt ou de la config web_fetch allowlist
     #     ...
     # )
-    print(f"⚠️  Stub J1 : mise à jour Anthropic non implémentée (Agent ID = {agent_selection_id})")
+    print(
+        f"⚠️  Stub J1 : mise à jour Anthropic non implémentée (Agent ID = {agent_selection_id})"
+    )
     print("   À implémenter en J10 quand les agents seront créés.")
     return 0
 

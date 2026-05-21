@@ -204,3 +204,88 @@ Décision **D-014** (2026-05-21) : **pas de demande d'accès API INIES, base sta
 - Commit J2 final avec totaux 5 dpts.
 - J4 effectif : nécessite URLs BD TOPO du partenaire (5 dpts).
 - **STOP avant J5** (ML training) — arbitrage produit demandé.
+
+---
+
+## 2026-05-21 — Session 4 (Jalon J4 prep + scoring batch infra)
+
+**Heure début** : 2026-05-21 ~21:30 (réception URLs BD TOPO + relance loop)
+**Objectif** : (1) Refactor BD TOPO ingestion (couches TRONCON_DE_ROUTE + BATIMENT, 7z, millésime pinné).
+(2) Infrastructure scoring : table `building_scores`, module `app.scoring.compute`, batch runner,
+config YAML, tests unitaires + invariants DB. (3) Téléchargement BD TOPO en arrière-plan.
+
+### Ce qui a marché
+- **URLs BD TOPO HDF reçues du partenaire** (5 dpts, millésime 3-5_2025-12-15) → injectées dans
+  `scripts/bdtopo_urls.txt`. Variable d'env `BDTOPO_MILLESIME` (défaut `3-5_2025-12-15`) pour pinning.
+- **Refactor ingest_bdtopo_roads.py → ingest_bdtopo.py** : extrait **les 2 couches demandées**
+  (`troncon_de_route` ET `batiment`), gère 7z (via `py7zr` ou binaire `7z`), tourne via container
+  `ghcr.io/osgeo/gdal:alpine-small-latest` sur le réseau `conx_net`. Idempotent par dpt
+  (DELETE WHERE dept + INSERT). L'ancien script roads-only est supprimé.
+- **Migration 007** : table `public_data.topo_buildings` (MultiPolygon 2154, GIST + dept + hauteur
+  + cleabs indexes).
+- **Téléchargement BD TOPO** lancé en arrière-plan (PID 2444 → log
+  `data/raw/bdtopo/logs/download.log`). 4/5 dpts terminés au moment de ce commit (1.77 GB).
+- **Migration 008** : table `public_data.building_scores` (5 composantes + valeurs brutes +
+  metadata + flags `incomplete_data` / `s_faisa_partial`). CHECK constraint sur composantes [0,1]
+  + dpe_source ∈ {`ademe-real`, `ml-predicted`} (SCORING.md §Implémentation).
+- **Module `backend/app/scoring/compute.py`** : pure function, charge thresholds depuis YAML,
+  retourne `BuildingScoreComponents` figé. SHA256-12 du YAML stocké dans `thresholds_version`.
+- **Config externalisée** : `config/scoring_thresholds.yaml` (toutes les valeurs SCORING.md).
+- **Batch runner `scripts/compute_building_scores.py`** : 2 connexions psycopg (read server-side
+  cursor + write UPSERT par chunks), idempotent via `ON CONFLICT (building_id) DO UPDATE`.
+- **Tests** : 17 unit tests (formule, bornes, fallbacks) + 10 tests d'invariants DB (correlations
+  classe DPE↔S_passoire, type_proprietaire↔S_social, FK building_id, thresholds_version uniforme).
+- **Validation empirique dpt 02** : 333 148 bâtiments scorés en 79.9 s (4 171/s). Top 5 scores
+  sont des DPE F/G bailleurs sociaux résidentiel collectif — exactement ce que la formule devrait
+  prioriser. confidence 0.9 sur DPE réels, < 0.4 sur fallback.
+- **Distribution dpt 02 post-scoring** :
+  - `ademe-real` : 34 960 (10.5 %) — DPE issu de l'ADEME directement.
+  - `ml-predicted` : 298 188 (89.5 %, `incomplete_data=true`) — fallback midpoint de classe
+    en attendant J5 ML. Confidence basse, sera réécrasé en J5.
+  - `s_faisa_partial=true` : 333 148 (100 %) — BD TOPO pas encore ingérée, acces_chantier neutralisé.
+
+### Ce qui n'a pas marché / corrigé en cours
+- **Dérive SCORING.md détectée par advisor** :
+  - `tertiaire_commerce = 0.6` → corrigé à `0.9` (SCORING.md liste UNE seule valeur tertiaire = 0.9).
+  - `dpe_source = 'fallback-typology'` (3e enum) → bascule sur `'ml-predicted'` (SCORING.md grave
+    2 valeurs seulement). Le batch dpt 02 a été drop + recréé pour respecter la nouvelle CHECK.
+  - Test parametrize ajouté pour pin tertiaire bureaux/commerce/magasin/bureau à la même valeur
+    (garde-fou anti-drift).
+- **Server-side cursor perdu sur commit** (psycopg) → bascule sur 2 connexions distinctes
+  (read autocommit=False long-lived, write autocommit=False par chunks).
+- **`db_status.py` Unicode crash** sur Windows cp1252 (déjà corrigé Session 3 — n/a ici).
+- **py7zr installé via pip user** (1.1.0) — déclaré dans `backend/requirements.txt`.
+- **PyYAML déclaré** dans `backend/requirements.txt` (6.0.2).
+- **download_bdtopo.sh** : flag `-s` à la place de `--progress-bar` (la progress curl spammait
+  le log). Pris effet sur les runs futurs (run en cours utilise l'ancienne version, sans impact).
+- **Risque silent drift sur `apply_migration_008`** : la fonction skip si la table existe.
+  Si la table avait été créée avec une CHECK plus laxe précédemment, le code ne forcerait pas
+  la nouvelle CHECK. Mitigation prise : drop table + re-créer manuellement avant re-run dpt 02.
+  Pas un problème en CI/CD propre, mais à surveiller dans les machines de dev. Documenté ici.
+
+### Décisions techniques internes
+- **Notes d'implémentation vs SCORING.md gravé** documentées dans `compute.py` docstring de tête :
+  (1) midpoints kWh par classe (fallback pré-J5), (2) redistribution poids S_faisa quand
+  acces_chantier indispo, (3) fallback type_compatible=0.5 sur type inconnu.
+- **`thresholds_version`** : SHA256-12 du YAML brut. Test `test_thresholds_version_uniforme`
+  garantit qu'on ne mélange pas deux versions dans `building_scores`.
+- **2 connexions psycopg** dans le batch runner : pattern à reproduire pour autres batchs ML.
+
+### Limitations connues (documentées, non bloquantes)
+- Au moment du commit : seul dpt 02 (333 148 lignes) est dans `building_scores`. Le batch full
+  5 dpts sera lancé immédiatement après ce commit.
+- BD TOPO routes (J4 effectif) : 4/5 dpts téléchargés au moment du commit. Ingestion à lancer
+  dès que dpt 80 termine.
+- `S_faisa.acces_chantier` calcul exact : reste neutralisé jusqu'à ingestion BD TOPO. Passe de
+  mise à jour à lancer après. Sera fait via PostGIS distance ST_DWithin(b.geom, r.geom, 10) +
+  largeur_m.
+
+### Bloqueurs ouverts
+- Aucun nouveau. B-001 (TTL session Managed Agents) reste à tester en J10.
+
+### Prochaine étape (mode boucle continue)
+1. Commit cette session (advisor OK).
+2. Lancer scoring batch sur les 4 dpts restants (59, 60, 62, 80) en arrière-plan.
+3. Attendre dpt 80 BD TOPO → ingestion 5 dpts.
+4. Passe de mise à jour S_faisa avec acces_chantier (PostGIS ST_DWithin + largeur).
+5. Tests d'invariants finaux + commit.

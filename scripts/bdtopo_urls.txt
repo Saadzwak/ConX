@@ -1,15 +1,15 @@
 # ConX — URLs BD TOPO IGN par département HDF.
 # Format : <dept> <url>
-# À COMPLÉTER par le partenaire (les URLs ne sont pas exposées par API).
-# Source : https://geoservices.ign.fr/telechargement (interactive) ou https://cartes.gouv.fr/
-# Format souhaité : GeoPackage (.gpkg) édition décembre 2025 ou janvier 2026.
+# Source officielle : https://geoservices.ign.fr/bdtopo
+# Section "BD TOPO® décembre 2025 Tous Thèmes par département format GeoPackage projection légale".
+# Millésime pinné : 3-5_2025-12-15 (variable d'env BDTOPO_MILLESIME). Ne PAS prendre l'édition trimestrielle suivante automatiquement.
+# Format : .7z (nécessite py7zr ou 7z binaire pour extraction).
+# Projection : Lambert-93 / EPSG:2154 — cohérent avec BDNB. Pas de reprojection.
+# Licence : Etalab 2.0 (cf. docs/DATA_SOURCES.md).
 #
-# Pattern d'URL typique IGN :
-#   https://data.geopf.fr/telechargement/download/BDTOPO/BDTOPO_<X>_GPKG_LAMB93_D0<XX>_<YYYY-MM-DD>/...7z
-#
-# Hauts-de-France (5 départements) — à remplir :
-02 TODO_BDTOPO_DEP02_URL
-59 TODO_BDTOPO_DEP59_URL
-60 TODO_BDTOPO_DEP60_URL
-62 TODO_BDTOPO_DEP62_URL
-80 TODO_BDTOPO_DEP80_URL
+# Hauts-de-France (5 départements) :
+02 https://data.geopf.fr/telechargement/download/BDTOPO/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D002_2025-12-15/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D002_2025-12-15.7z
+59 https://data.geopf.fr/telechargement/download/BDTOPO/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D059_2025-12-15/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D059_2025-12-15.7z
+60 https://data.geopf.fr/telechargement/download/BDTOPO/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D060_2025-12-15/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D060_2025-12-15.7z
+62 https://data.geopf.fr/telechargement/download/BDTOPO/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D062_2025-12-15/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D062_2025-12-15.7z
+80 https://data.geopf.fr/telechargement/download/BDTOPO/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D080_2025-12-15/BDTOPO_3-5_TOUSTHEMES_GPKG_LAMB93_D080_2025-12-15.7z

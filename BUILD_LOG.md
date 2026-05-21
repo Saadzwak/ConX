@@ -469,3 +469,15 @@ L'`accuracy ±1 = 83.48 %` global est artificiellement élevée par le biais de 
 - **Attente décision partenaire B-006**.
 - Si (b) refit balanced : ~15 min de réentraînement, re-tester métriques.
 - Si (a) accept-as-is ou (b) post-refit : lancer prédiction massive (`scripts/predict_dpe_ml.py --all`, à créer) → INSERT into `dpe` avec `source='ml-predicted'` → re-batch scoring → 100 % couverture.
+
+### Corrigendum — message du commit e8ad8e5
+
+Le commit message contenait trois valeurs cosmétiquement incorrectes (probablement copiées d'un run intermédiaire avant le run final). Les sources de vérité (`BUILD_LOG.md` Session 6, `BLOCKERS.md` B-006, `data/storage/ml/dpe_estimator_560402f6_metrics.json`) ont les bonnes valeurs depuis le début :
+
+| Métrique | Commit message (erroné) | Source de vérité (correct) |
+|---|---|---|
+| Accuracy stricte | 53.84 % | **41.97 %** |
+| MAE conso | 51.96 kWh/m²/an | **67.60 kWh/m²/an** |
+| n_test | 78 818 | **108 256** |
+
+Accuracy ±1 = 83.48 %, n_train = 309 069, et toutes les autres métriques sont identiques. Pas d'impact sur la décision B-006.

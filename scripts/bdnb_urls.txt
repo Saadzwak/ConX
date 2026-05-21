@@ -1,0 +1,9 @@
+# ConX — URLs BDNB millésime 2025-07.a, format pgdump (Scaleway Object Storage).
+# Fourni par le partenaire 2026-05-21. Source : bdnb.io.
+# Format : <dept> <url>  (séparateur = espace, commentaires possibles avec #)
+# Hauts-de-France (5 départements).
+02 https://open-data.s3.fr-par.scw.cloud/bdnb_millesime_2025-07-a/millesime_2025-07-a_dep02/open_data_millesime_2025-07-a_dep02_pgdump.zip
+59 https://open-data.s3.fr-par.scw.cloud/bdnb_millesime_2025-07-a/millesime_2025-07-a_dep59/open_data_millesime_2025-07-a_dep59_pgdump.zip
+60 https://open-data.s3.fr-par.scw.cloud/bdnb_millesime_2025-07-a/millesime_2025-07-a_dep60/open_data_millesime_2025-07-a_dep60_pgdump.zip
+62 https://open-data.s3.fr-par.scw.cloud/bdnb_millesime_2025-07-a/millesime_2025-07-a_dep62/open_data_millesime_2025-07-a_dep62_pgdump.zip
+80 https://open-data.s3.fr-par.scw.cloud/bdnb_millesime_2025-07-a/millesime_2025-07-a_dep80/open_data_millesime_2025-07-a_dep80_pgdump.zip

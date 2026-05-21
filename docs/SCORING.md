@@ -77,7 +77,7 @@ Score [0,1] composite d'indicateurs binaires et continus extraits de BDNB + BD T
 | **Toiture régulière** | 0.25 | 1 si pente uniforme, 0.5 si toiture complexe, 0 si toiture indéterminée. Détection via MNH/MNS LiDAR ou type BDNB. |
 | **Accès chantier** | 0.20 | 1 si rue ≥ 4 m de large à moins de 10 m du bâtiment (BD TOPO + BDNB), 0.5 si rue 2-4 m, 0 si impasse étroite ou bâtiment enclavé. |
 | **Hauteur compatible préfabrication** | 0.15 | 1 si ≤ R+4 (modules grutables), 0.7 si R+5/R+8, 0.3 si > R+8. |
-| **Absence de protection patrimoniale** | 0.20 | 0 si Monument Historique inscrit/classé ou Site Patrimonial Remarquable (champ BDNB). 1 sinon. |
+| **Absence de protection patrimoniale** | 0.20 | 0 si Monument Historique (champ BDNB `monument_historique`, inscrit/classé non distingué dans BDNB open) ou Site Patrimonial Remarquable (`spr` = `zone_plu_bati_patrimonial`). 1 sinon. |
 | **Géométrie simple** | 0.10 | Ratio périmètre² / surface : 1 si proche du carré (faible), 0 si très allongé/découpé. |
 | **Type compatible hors-site** | 0.10 | Résidentiel collectif R+1 à R+5 = 1 ; pavillon = 0.8 ; tertiaire ≤ R+4 = 0.9 ; industriel = 0.3 ; spécifique (église, gare…) = 0. |
 
@@ -175,8 +175,24 @@ Le séparer dans sa propre composante :
 2. **Améliore la lisibilité** dans le breakdown UI : on voit explicitement "ce bâtiment marque haut parce qu'il est passoire".
 3. **Permet l'ajustement indépendant** du poids `w_passoire` selon le contexte (un audit "urgence loi Climat" mettrait `w_passoire = 0.40`, un audit "patrimoine touristique" mettrait `w_passoire = 0.0`).
 
+### ⚠️ Coefficient d'énergie primaire électricité 1.9 (BDNB 2025-07.a — anticipation réforme 2026-01-01)
+
+À partir du **1er janvier 2026**, le calcul officiel du DPE utilise un coefficient d'énergie primaire pour le vecteur électricité de **1.9** (au lieu de 2.3 précédemment). Cette réforme réduit mécaniquement la consommation EP des logements chauffés électriquement et **diminue donc le nombre de bâtiments classés F/G**.
+
+**Source officielle** : [Ministère de la Transition Écologique — FAQ DPE modification du facteur de conversion](https://rt-re-batiment.developpement-durable.gouv.fr/faq-dpe-modification-du-facteur-de-conversion-en-a1021.html?lang=fr).
+
+**Implication pour ConX** :
+- La BDNB millésime **2025-07.a anticipe déjà cette réforme** : les simulations DPE qu'elle livre utilisent le coefficient 1.9. Confirmé par le changelog officiel BDNB.
+- ConX adopte **systématiquement le DPE coefficient 1.9** (= le futur DPE officiel). Si la BDNB livre les deux versions (2.3 historique et 1.9 anticipée), le pipeline d'ingestion (J2) prend la 1.9.
+- **Conséquence chiffrée** : `S_passoire` colonisera moins de bâtiments en HDF qu'avec le coefficient 2.3. C'est cohérent avec le cadre réglementaire **à venir**.
+- **Pitch jury** : argumentaire prêt — "ConX est aligné avec le futur cadre réglementaire 2026, pas avec le passé. Les bâtiments que nous priorisons sont ceux qui resteront passoires après la réforme."
+
+L'UI affiche explicitement dans la fiche bâtiment : *"Classe DPE basée sur le coefficient EP électricité 1.9 (cadre réglementaire 2026)."*
+
 ### Sources
 - Loi Climat & Résilience du 22 août 2021.
+- [FAQ DPE — coefficient 1.9 (DGEC, MTE)](https://rt-re-batiment.developpement-durable.gouv.fr/faq-dpe-modification-du-facteur-de-conversion-en-a1021.html?lang=fr).
+- BDNB 2025-07.a changelog (CSTB).
 - Classe DPE : DPE réel (`source = 'ademe-real'`) ou prédiction ML (`source = 'ml-predicted'`). En cas de prédiction, on affiche dans l'UI "estimation — DPE réel à confirmer".
 
 ---

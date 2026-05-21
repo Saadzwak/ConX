@@ -5,6 +5,8 @@ uvicorn[standard]==0.32.1
 # Database (postgres_local async)
 asyncpg==0.30.0
 sqlalchemy[asyncio]==2.0.36
+# psycopg (sync) — utilisé par les tests d'invariants post-ingestion + scripts
+psycopg[binary]==3.2.3
 
 # Auth (Supabase JWT — cf. D-012)
 PyJWT[crypto]==2.10.1

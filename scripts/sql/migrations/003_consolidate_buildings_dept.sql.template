@@ -1,0 +1,104 @@
+-- ConX — Template de consolidation par département (instancié par ingest_bdnb.py).
+-- Remplace {DEPT} par le code département (02 / 59 / 60 / 62 / 80).
+-- Schéma source : bdnb_2025_07_a_open_data_dep{DEPT}.
+--
+-- Mapping basé sur l'inspection effective du schéma dpt 02 (post-restore).
+-- 57 tables observées. Colonnes confirmées (cf. BUILD_LOG.md J2).
+
+-- Sous-requête : 1 rnb_id représentatif par batiment_groupe (MIN pour stabilité)
+-- batiment_construction porte le lien vers batiment_groupe, rel_batiment_construction_rnb porte le rnb_id.
+WITH rnb_par_groupe AS (
+    SELECT bc.batiment_groupe_id, MIN(rel.rnb_id) AS rnb_id
+    FROM bdnb_2025_07_a_open_data_dep{DEPT}.batiment_construction bc
+    JOIN bdnb_2025_07_a_open_data_dep{DEPT}.rel_batiment_construction_rnb rel
+        ON rel.batiment_construction_id = bc.batiment_construction_id
+    WHERE rel.rnb_id IS NOT NULL
+    GROUP BY bc.batiment_groupe_id
+)
+INSERT INTO public_data.buildings (
+    building_id,
+    rnb_id,
+    dept,
+    geom,
+    surface_m2,
+    hauteur_m,
+    nb_logements,
+    annee_constr,
+    periode_construction,
+    type_principal,
+    materiau_mur,
+    type_proprietaire,
+    monument_historique,
+    spr,
+    dpe_classe,
+    dpe_kwh_ep_m2_an,
+    dpe_kg_co2_m2_an,
+    bdnb_millesime
+)
+SELECT
+    bg.batiment_groupe_id                                              AS building_id,
+    rnb.rnb_id                                                         AS rnb_id,
+    '{DEPT}'                                                           AS dept,
+    ST_Multi(bg.geom_groupe)::geometry(MultiPolygon, 2154)             AS geom,
+    bg.s_geom_groupe::numeric                                          AS surface_m2,
+    bdt.hauteur_mean::numeric                                          AS hauteur_m,
+    COALESCE(ffo.nb_log, rpls.nb_log, rnc.nb_log)                      AS nb_logements,
+    ffo.annee_construction                                             AS annee_constr,
+    public_data.periode_from_annee(ffo.annee_construction)             AS periode_construction,
+    COALESCE(ffo.usage_niveau_1_txt, sup.usage_principal_bdnb_open, 'inconnu')
+                                                                       AS type_principal,
+    ffo.mat_mur_txt                                                    AS materiau_mur,
+    -- Mapping type_proprietaire :
+    --   présence dans batiment_groupe_rpls    → bailleur_social
+    --   présence dans batiment_groupe_rnc     → personne_morale_privee (copropriété)
+    --   sinon                                 → particulier
+    CASE
+        WHEN rpls.batiment_groupe_id IS NOT NULL THEN 'bailleur_social'
+        WHEN rnc.batiment_groupe_id  IS NOT NULL THEN 'personne_morale_privee'
+        ELSE 'particulier'
+    END                                                                AS type_proprietaire,
+    -- Monument Historique (BDNB open : un seul boolean, inscrit/classé non distingué)
+    COALESCE(urb.monument_historique, false)                           AS monument_historique,
+    COALESCE(urb.zone_plu_bati_patrimonial, false)                     AS spr,
+    -- DPE : classe_bilan_dpe = arrêté 2021 (coefficient EP électricité 1.9).
+    -- Validé empiriquement dpt 02 : 100% arrete_2021=true, donc pas de filtre supplémentaire.
+    public_data.normalize_dpe_classe(dpe.classe_bilan_dpe)             AS dpe_classe,
+    dpe.conso_5_usages_ep_m2::numeric                                  AS dpe_kwh_ep_m2_an,
+    dpe.emission_ges_5_usages_m2::numeric                              AS dpe_kg_co2_m2_an,
+    '2025-07-a'                                                        AS bdnb_millesime
+FROM bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe bg
+LEFT JOIN bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe_ffo_bat ffo
+    USING (batiment_groupe_id)
+LEFT JOIN bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe_bdtopo_bat bdt
+    USING (batiment_groupe_id)
+LEFT JOIN bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe_dpe_representatif_logement dpe
+    USING (batiment_groupe_id)
+LEFT JOIN bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe_urbanisme urb
+    USING (batiment_groupe_id)
+LEFT JOIN bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe_rpls rpls
+    USING (batiment_groupe_id)
+LEFT JOIN bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe_rnc rnc
+    USING (batiment_groupe_id)
+LEFT JOIN bdnb_2025_07_a_open_data_dep{DEPT}.batiment_groupe_synthese_propriete_usage sup
+    USING (batiment_groupe_id)
+LEFT JOIN rnb_par_groupe rnb
+    USING (batiment_groupe_id)
+WHERE bg.geom_groupe IS NOT NULL
+  AND ST_IsValid(bg.geom_groupe)
+ON CONFLICT (building_id) DO UPDATE SET
+    rnb_id               = EXCLUDED.rnb_id,
+    geom                 = EXCLUDED.geom,
+    surface_m2           = EXCLUDED.surface_m2,
+    hauteur_m            = EXCLUDED.hauteur_m,
+    nb_logements         = EXCLUDED.nb_logements,
+    annee_constr         = EXCLUDED.annee_constr,
+    periode_construction = EXCLUDED.periode_construction,
+    type_principal       = EXCLUDED.type_principal,
+    materiau_mur         = EXCLUDED.materiau_mur,
+    type_proprietaire    = EXCLUDED.type_proprietaire,
+    monument_historique  = EXCLUDED.monument_historique,
+    spr                  = EXCLUDED.spr,
+    dpe_classe           = EXCLUDED.dpe_classe,
+    dpe_kwh_ep_m2_an     = EXCLUDED.dpe_kwh_ep_m2_an,
+    dpe_kg_co2_m2_an     = EXCLUDED.dpe_kg_co2_m2_an,
+    ingested_at          = now();

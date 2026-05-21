@@ -100,3 +100,56 @@ Décision **D-014** (2026-05-21) : **pas de demande d'accès API INIES, base sta
 - Téléchargement BDNB : à lancer par le partenaire après complétion des URLs dans `scripts/download_bdnb.sh` (visite manuelle de https://bdnb.io/download/ pour récupérer les URLs exactes par département).
 - Vérification connexion Supabase à lancer par le partenaire (`python scripts/verify_supabase_connection.py`) après remplissage du `.env`.
 - Sur OK : J2 (ingestion BDNB dans `postgres_local.public_data`).
+
+---
+
+## 2026-05-21 — Session 2 (Jalon J2 partiel — dpt 02 validé, 4 autres en cours)
+
+**Heure début** : 2026-05-21 19:30 (le partenaire a fourni les 5 URLs BDNB)
+**Heure fin partielle** : 2026-05-21 20:19 (dpt 02 ingéré et validé)
+**Objectif** : J2 — ingestion BDNB 5 départements HDF. Schéma observé/adapté/testé sur dpt 02. Code prêt pour les 4 autres.
+
+### Ce qui a marché
+- **5 URLs BDNB** fournies (Scaleway Object Storage) intégrées dans `scripts/bdnb_urls.txt`. `scripts/download_bdnb.sh` refactoré pour lire ce fichier (séparation données/code).
+- **Download** : 5 départements téléchargés en ~7 min (total ~2.67 GB compressé).
+- **Décompression** : 4 dpts décompressés en parallèle (~5 min, total ~12.5 GB décompressé).
+- **Restore dpt 02** : SQL plain 1.39 GB → 56 tables + 333 148 bâtiments en ~10 min via `docker exec psql -f`. Idempotent (skip si schéma déjà peuplé).
+- **Schéma BDNB confirmé** : 57 tables dans `bdnb_2025_07_a_open_data_dep02`. Tables clés identifiées (batiment_groupe, batiment_groupe_ffo_bat, batiment_groupe_bdtopo_bat, batiment_groupe_dpe_representatif_logement, batiment_groupe_urbanisme, batiment_groupe_rpls, batiment_groupe_rnc).
+- **Consolidation `public_data.buildings`** : 333 148 lignes ingérées en ~70 s. Distribution DPE A-G plausible (218 A → 3691 G). 0 géométrie invalide. SRID 2154 confirmé.
+- **Coefficient 1.9 validation empirique** : `SELECT count(*) FILTER (WHERE arrete_2021 = true)` sur les DPE non-nuls dpt 02 = **34 960 / 34 960 (100%)**. Donc `classe_bilan_dpe` est garanti coefficient 1.9. Affiché dans le commentaire SQL.
+- **Type propriétaire** : 326 201 particuliers (97.9 %), 5 582 bailleurs sociaux (1.7 %), 1 365 copropriétés (0.4 %). Cohérent pour Aisne rurale.
+- **Monuments Historiques** : 448 bâtiments / 333 148 = 0.13 %. Plausible (églises classées + château).
+- **CHANGELOG BDNB lu** : confirme officiellement le coefficient 1.9 (ligne 87) + millésimes sources (DPE ADEME 2025-09, BD TOPO 2025-06-15, RNB 2025-07).
+
+### Ce qui n'a pas marché / corrigé en cours
+- **Port 5432 occupé** sur la machine (PostgreSQL natif probable). Bascule sur **5433 hôte** dans docker-compose.yml + `.env.example` (`POSTGRES_LOCAL_PORT_HOST=5433`). Port interne 5432 inchangé.
+- **Docker Desktop non démarré** au lancement → démarré programmatiquement (Start-Process).
+- **rnb_id pas dans `batiment_construction`** comme initialement supposé, mais dans `rel_batiment_construction_rnb`. Sous-requête de jointure ajustée.
+- **Schéma `mh_inscrit` + `mh_classe`** initialement prévu → BDNB open ne distingue pas inscrit/classé (`batiment_groupe_merimee` n'a que distance/nom du MH proche). Schéma simplifié : `monument_historique boolean` unique. Décision documentée.
+- **`type_proprietaire = 'public'`** : pas dérivable de BDNB open avec qualité suffisante. Set canonique réduit à {bailleur_social, personne_morale_privee, particulier}. Documenté.
+
+### Décisions techniques internes
+- **Idempotence ingestion** : `find_zip` détecte `.zip.done`, `extract_zip` détecte `.extracted.done`, `restore_dump` skip si schéma déjà peuplé. Recommençable.
+- **psql via docker exec** : pas de client PG natif sur Windows. Variable `CONX_USE_DOCKER_EXEC=1` (défaut).
+- **Format BDNB millésime 2025-07.a** : **SQL plain** (pas pg_restore custom). 1 fichier `pgdump/bdnb.sql` par dpt + 1 fichier `referentiel_administratif.sql` (non ingéré dans v1).
+
+### Limitations connues (documentées, non bloquantes)
+- 108 k bâtiments dpt 02 sans `ffo` (pas dans Fichiers Fonciers) → NULL pour annee_constr, materiau_mur, nb_logements. C'est attendu — annexes, bâtiments légers, etc.
+- `type_proprietaire = 'public'` non distinguable des particuliers. Limitation BDNB open. UI `S_social` sous-pondérera collectivités. Acceptable pour MVP.
+- `surface_utile_m2`, `nb_etages`, `sous_type` retirés du schéma (toujours NULL si non sourcés).
+- `monument_historique` boolean unique (BDNB open ne distingue pas inscrit/classé).
+
+### Bloqueurs ouverts
+- Aucun bloqueur nouveau. B-001 (TTL session Managed Agents) reste à tester en J10.
+
+### Prochaine étape
+- Lancer les 4 autres dpts (59, 60, 62, 80) en série. Restore + consolidation. Estimation : 60-90 min total (dpt 59 Nord est le plus gros, 4.7 GB décompressé).
+- Une fois 5 dpts ingérés : commit J2 final avec count total + entrée BUILD_LOG.
+- Puis J3 : DPE — selon CHANGELOG, BDNB 2025-07.a intègre déjà DPE ADEME 2025-09. À évaluer s'il faut un ingestion DPE séparée ou si BDNB suffit.
+
+### Questions ouvertes pour le partenaire (non bloquantes — à traiter au retour)
+1. Limitation `type_proprietaire = 'public'` : OK pour MVP, ou doit-on chercher une source complémentaire (DGFIP MAJIC PM, fichiers fonciers) ? (Cf. SCORING.md composante S_social.)
+2. Pour les 108 k bâtiments dpt 02 sans `ffo` : on les inclut dans le scoring quand même (avec NULL) ou on les filtre ?
+3. Le `materiau_mur` BDNB est en texte libre (mat_mur_txt) — il faudra probablement le normaliser pour le ML/scoring. Mapping à faire en J5 ?
+4. Pour J3 : si BDNB intègre déjà DPE ADEME 2025-09, ai-je besoin d'ingestion DPE séparée ? Avantage : DPE plus récents que millésime BDNB. Inconvénient : duplique le travail.
+5. Vérification connexion Supabase (`scripts/verify_supabase_connection.py`) : à toi de la lancer quand tu rempliras le `.env` avec tes vraies credentials.

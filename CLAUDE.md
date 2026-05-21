@@ -107,6 +107,14 @@ Volume Docker (lu/écrit directement par FastAPI, séparé des bases) :
 
 **Footer obligatoire** : `Données : IGN, CSTB (BDNB), ADEME (DPE, Base Carbone), INIES (FDES), DGFiP (BAN), Licence Ouverte Etalab 2.0`.
 
+### Important — coefficient EP électricité 1.9 (anticipation réforme 2026-01-01)
+
+À partir du 1er janvier 2026, le DPE officiel utilise un coefficient EP électricité de **1.9** au lieu de 2.3 ([source DGEC/MTE](https://rt-re-batiment.developpement-durable.gouv.fr/faq-dpe-modification-du-facteur-de-conversion-en-a1021.html?lang=fr)). La **BDNB 2025-07.a anticipe déjà cette réforme** : les classes DPE qu'elle livre utilisent le coefficient 1.9.
+
+**Décision technique** : le pipeline d'ingestion J2 et le scoring ConX adoptent **systématiquement le DPE avec coefficient 1.9** (le futur DPE officiel). Si BDNB livre les deux versions (historique 2.3 et anticipée 1.9), on prend la 1.9. Détails dans [docs/SCORING.md](docs/SCORING.md) composante S_passoire.
+
+**Pitch jury** : "ConX est aligné avec le cadre réglementaire **à venir**, pas avec le passé. Les bâtiments que nous priorisons restent passoires après la réforme."
+
 ---
 
 ## 5. Stack technique
@@ -139,9 +147,14 @@ Données publiques massives. Pas de RLS (lecture publique pour utilisateurs auth
 
 ```
 public_data.buildings
-  (id PK = batiment_groupe_id BDNB, rnb_id, geom 2154, surface, hauteur,
-   annee_constr, type, nb_logements, materiau_mur, type_proprietaire, dept)
-  INDEX GIST(geom), INDEX(rnb_id), INDEX(dept)
+  (building_id PK = batiment_groupe_id BDNB, rnb_id, dept, geom 2154,
+   surface_m2, hauteur_m, nb_logements, annee_constr, periode_construction,
+   type_principal, materiau_mur, type_proprietaire,
+   monument_historique (single boolean — BDNB open ne distingue pas inscrit/classé),
+   spr, dpe_classe, dpe_kwh_ep_m2_an, dpe_kg_co2_m2_an,
+   dpe_coefficient_ep_electricite DEFAULT 1.9, bdnb_millesime, ingested_at)
+  INDEX GIST(geom), INDEX(rnb_id), INDEX(dept), INDEX(dpe_classe),
+  INDEX(type_proprietaire), INDEX(annee_constr), INDEX(monument_historique) WHERE = true
 
 public_data.dpe
   (id, building_id FK, rnb_id, source 'ademe-real'|'ml-predicted',

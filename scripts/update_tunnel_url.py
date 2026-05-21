@@ -27,7 +27,7 @@ def main() -> int:
         print("   Démarre ngrok : ngrok http 8000, puis copie l'URL https://...ngrok-free.app")
         return 1
 
-    print(f"ℹ️  NGROK_PUBLIC_URL = {ngrok_url}")
+    print(f"*  NGROK_PUBLIC_URL = {ngrok_url}")
 
     if not agent_selection_id:
         print("⚠️  AGENT_SELECTION_ID non défini — agents pas encore créés (J10).")

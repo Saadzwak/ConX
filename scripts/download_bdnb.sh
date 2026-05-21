@@ -1,42 +1,57 @@
 #!/usr/bin/env bash
-# ConX — téléchargement asynchrone des 5 départements BDNB Hauts-de-France.
-# Lancé en tâche de fond à J1, reprenable si interrompu (curl -C -).
+# ConX — téléchargement asynchrone des départements BDNB.
+# Lit les URLs depuis scripts/bdnb_urls.txt (format : <dept> <url> par ligne).
+# Reprenable (curl -C -), 3 retries par dpt, marker .done.
 #
 # Usage :
-#   ./scripts/download_bdnb.sh                # télécharge tous les départements manquants
-#   ./scripts/download_bdnb.sh 59             # un seul département
+#   bash scripts/download_bdnb.sh                # tous les départements du fichier
+#   bash scripts/download_bdnb.sh 59             # un seul département
 #
-# Sortie : ./data/raw/bdnb/<dept>/bdnb_2025-07-a_<dept>.gpkg (ou .sql.gz selon dispo)
-#
-# IMPORTANT : les URLs de téléchargement direct ne sont pas encore figées dans ce script.
-# Premier run : repérage manuel sur https://bdnb.io/download/ puis remplir le tableau URLS.
+# Sortie : ./data/raw/bdnb/<dept>/<filename>.zip (+ .done marker)
+# Log    : redirection conseillée vers ./data/raw/bdnb/download.log
 
-set -euo pipefail
+set -uo pipefail
 
-MILLESIME="2025-07-a"
-DEPTS="${1:-59 62 80 60 02}"
+URLS_FILE="scripts/bdnb_urls.txt"
 DEST_DIR="./data/raw/bdnb"
+RETRIES=3
+SELECTED_DEPT="${1:-}"
+
 mkdir -p "$DEST_DIR"
 
-# TODO J1 : remplir avec les URLs exactes après visite https://bdnb.io/download/
-# Format attendu : URL pointant vers un GPKG ou pgdump du dpt pour le millésime ${MILLESIME}.
-declare -A URLS=(
-    [59]=""
-    [62]=""
-    [80]=""
-    [60]=""
-    [02]=""
-)
+log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"; }
 
-log() { echo "[$(date +'%H:%M:%S')] $*"; }
+if [[ ! -f "$URLS_FILE" ]]; then
+    log "❌ Fichier $URLS_FILE introuvable."
+    exit 1
+fi
 
-for dept in $DEPTS; do
-    url="${URLS[$dept]:-}"
-    if [[ -z "$url" ]]; then
-        log "⚠️  URL non définie pour le département $dept — édite scripts/download_bdnb.sh"
+# Parse le fichier : lignes "dept url", ignore commentaires et lignes vides.
+FAILED_DEPTS=()
+TOTAL=0
+SUCCESS=0
+SKIPPED=0
+
+while IFS= read -r line; do
+    # Skip commentaires et vides
+    line="${line%%#*}"
+    line="$(echo "$line" | xargs)"
+    [[ -z "$line" ]] && continue
+
+    dept="$(echo "$line" | awk '{print $1}')"
+    url="$(echo "$line" | awk '{print $2}')"
+
+    if [[ -z "$dept" || -z "$url" ]]; then
+        log "⚠️  Ligne malformée ignorée : $line"
         continue
     fi
 
+    # Filtre éventuel par département
+    if [[ -n "$SELECTED_DEPT" && "$dept" != "$SELECTED_DEPT" ]]; then
+        continue
+    fi
+
+    TOTAL=$((TOTAL + 1))
     dept_dir="$DEST_DIR/$dept"
     mkdir -p "$dept_dir"
     filename=$(basename "$url")
@@ -44,18 +59,40 @@ for dept in $DEPTS; do
 
     if [[ -f "$dest.done" ]]; then
         log "✅ $dept déjà téléchargé : $dest"
+        SKIPPED=$((SKIPPED + 1))
+        SUCCESS=$((SUCCESS + 1))
         continue
     fi
 
     log "⬇️  Téléchargement $dept depuis $url"
-    # -C - pour reprise si interrompu
-    if curl -fsSL -C - -o "$dest" "$url"; then
-        touch "$dest.done"
-        log "✅ $dept terminé : $dest"
-    else
-        log "❌ Échec $dept — relance le script pour reprendre"
-        exit 1
-    fi
-done
+    attempt=0
+    success=0
+    while (( attempt < RETRIES )); do
+        attempt=$((attempt + 1))
+        if curl -fL -C - --connect-timeout 30 --max-time 7200 \
+                -o "$dest" "$url" \
+                --progress-bar 2>&1; then
+            touch "$dest.done"
+            log "✅ $dept terminé (tentative $attempt) : $dest ($(du -h "$dest" | cut -f1))"
+            success=1
+            SUCCESS=$((SUCCESS + 1))
+            break
+        else
+            log "⚠️  $dept échec tentative $attempt/$RETRIES"
+            sleep $((attempt * 5))
+        fi
+    done
 
-log "Téléchargement BDNB terminé."
+    if (( success == 0 )); then
+        log "❌ $dept abandonné après $RETRIES tentatives"
+        FAILED_DEPTS+=("$dept")
+    fi
+done < "$URLS_FILE"
+
+log "─────────────────────────────────────────────"
+log "Bilan : $SUCCESS/$TOTAL téléchargés ($SKIPPED déjà présents)"
+if (( ${#FAILED_DEPTS[@]} > 0 )); then
+    log "❌ Échecs : ${FAILED_DEPTS[*]}"
+    exit 2
+fi
+log "✅ Tous les départements demandés sont téléchargés."

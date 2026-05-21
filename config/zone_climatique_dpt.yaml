@@ -1,0 +1,20 @@
+# ConX — Référentiel zone climatique par département HDF (RT 2012 / RE 2020).
+#
+# Source : arrêté du 26 octobre 2010 (RT 2012) + carte officielle MTE/DGEC.
+# https://rt-re-batiment.developpement-durable.gouv.fr/
+#
+# Zones HDF (toutes en H1 — climat continental modéré / océanique nord) :
+# - H1a : climat continental humide (Nord, Pas-de-Calais, Oise, Somme)
+# - H1b : climat continental légèrement plus marqué (Aisne)
+# - H1c : pas représenté en HDF
+# - H2a : non représenté en HDF
+#
+# Note : la zone réelle dépend de la commune et de l'altitude. Pour MVP, une zone par dpt.
+# Pour J5+ : raffiner par commune INSEE si besoin via croisement avec référentiel détaillé MTE.
+
+dept_to_zone:
+  "02": "H1b"   # Aisne — légèrement plus continental
+  "59": "H1a"   # Nord
+  "60": "H1a"   # Oise
+  "62": "H1a"   # Pas-de-Calais
+  "80": "H1a"   # Somme

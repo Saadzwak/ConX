@@ -376,3 +376,96 @@ config YAML, tests unitaires + invariants DB. (3) Téléchargement BD TOPO en ar
 ### Prochaine étape (mode boucle continue)
 - Commit cette session (advisor OK).
 - En attente prochain feedback partenaire pour J5 (ML estimation DPE) ou autres directions.
+
+---
+
+## 2026-05-22 — Session 6 (J5 entraînement ML — STOP partner validation)
+
+**Heure début** : 2026-05-22 ~00:00 (brief J5 reçu)
+**Heure fin (training)** : 2026-05-22 00:08:32 (modèle sauvegardé)
+**Objectif** : (1) Schémas DB (migration 010 : commune INSEE + dpe_source + ML metadata columns).
+(2) Module ML complet : features.py, train.py, predict.py + scoring_thresholds + tests.
+(3) Pré-calcul neighborhood k=20 via PostGIS, training RF, métriques. **STOP avant prédiction massive**.
+
+### Ce qui a marché
+- **Migration 010 appliquée** :
+  - `buildings.code_commune_insee` (text) + `code_iris` + `dpe_source` ('ademe-real'|'ml-predicted'|NULL).
+  - `dpe.source` (CHECK ∈ {ademe-real, ml-predicted}) + `model_version`, `confidence`, `prediction_date`, `predicted_classes_top3` (text[]), `clipped`.
+  - 4 colonnes booléennes anomalies (rt2012, re2020, pac, neighborhood).
+  - Backfill `dpe_source='ademe-real'` sur 417 353 lignes en ~4 min.
+- **Backfill code_commune_insee** depuis `bdnb_*.batiment_groupe` (5 dpts en série, 100 % couverture) :
+  - 02 : 333 148 | 59 : 1 221 175 | 60 : 397 252 | 62 : 808 154 | 80 : 362 784
+  - Total : **3 122 513 bâtiments mappés à 3 782 communes uniques**.
+- **Module ML complet** :
+  - `backend/app/ml/features.py` — feature engineering (15 features), pure functions.
+  - `backend/app/ml/train.py` — Random Forest + spatial split + métriques + persistence.
+  - `backend/app/ml/predict.py` — predict_batch + anomaly rules + clip_kwh (post-validation).
+  - `config/zone_climatique_dpt.yaml` — référentiel RT/RE par dpt.
+  - `scripts/train_dpe_ml.py` — script orchestrateur.
+  - `scripts/predict_dpe_ml_sample.py` — diagnostic 10-sample (pré-validation).
+  - `backend/tests/test_dpe_ml.py` — 21 tests unitaires (features, split spatial, accuracy, encoding).
+- **Pré-calcul neighborhood k=20** sur 417 325 bâtiments en **395 s** (~1 060/s en moyenne) :
+  - Table `public_data.building_neighborhood_train` créée (D-019).
+  - Per dpt : 02 (35s), 59 (174s), 60 (26s), 62 (83s), 80 (76s).
+- **Training Random Forest** sur 309 069 rows en **89 s** (classifier 23s + regressor 89s).
+- **Split spatial** sans fuite : 2 635 communes train + 1 128 communes test, **aucune overlap** vérifiée.
+- **Modèle sauvegardé** : `data/storage/ml/dpe_estimator_560402f6.pkl` (180 MB) + metrics JSON.
+- **Tests** : 74/74 passent (53 nouveaux ML + 21 scoring existants).
+
+### Métriques modèle (cible brief J5 §4)
+- **Accuracy ±1 classe** : **83.48 %** ✅ — au-dessus du seuil "OBJECTIF VISÉ" (≥ 75 %).
+- Accuracy stricte : 41.97 %.
+- MAE consommation : 67.6 kWh ep/m²/an.
+- Train rows : 309 069 (2 635 communes).
+- Test rows : 108 256 (1 128 communes).
+
+### Ce qui a déclenché un STOP avec analyse critique
+
+**B-006 ouvert** : Le modèle satisfait le seuil ±1 ≥ 75 % du brief J5, **mais** la matrice de confusion révèle un **biais sévère vers les classes médianes D/E** :
+
+| Classe réelle | Taux exact | ±1 par classe |
+|---|---|---|
+| A | 17 % | (faible coverage) |
+| B | 11 % | (faible coverage) |
+| C | 30 % | |
+| D | **76 %** | 99.6 % |
+| E | 32 % | |
+| **F** | **0.7 %** ⚠️ | **40.8 %** (E+F+G) |
+| **G** | **0.3 %** ⚠️ | **0.55 %** ⚠️ (F+G uniquement — E à ord 5 est à 2 classes de G=ord 7) |
+
+**Implication produit critique** : ConX cible précisément les passoires F/G. Le modèle les prédit **systématiquement en D**. Sur un échantillon de 10 bâtiments (3 passoires F/G), **3/3 passoires ratées**.
+
+L'`accuracy ±1 = 83.48 %` global est artificiellement élevée par le biais de prédiction vers D. C'est un cas où la métrique brief J5 §4 est techniquement satisfaite mais où l'analyse qualitative révèle un problème majeur.
+
+### Décision — STOP requis (brief J5 §11)
+> "Après l'entraînement initial : avant la prédiction massive, présente-moi les 4 métriques. Je décide alors si on continue, on retravaille, ou on accepte avec avertissement."
+
+→ **STOP**. Présentation au partenaire avec les 3 options (B-006) :
+- (a) Accepter avec UI masquant prédictions F/G basse confidence.
+- (b) Refit avec `class_weight='balanced'` (réduction probable de l'accuracy ±1 globale à ~75-80 %, mais amélioration drastique sur F/G).
+- (c) Explorer alternative (XGBoost, stratified oversampling, ordinal regression).
+
+### Ce qui n'a pas marché / corrigé
+- **Bug Unicode dans `print_metrics`** sur Windows cp1252 (caractères → et ✅). Corrigé en ASCII (`->`, `[OK]`).
+  Le modèle était déjà sauvegardé avant le crash — récupérable via JSON.
+- **Tests stratégie classes** : ARROWSTRINGARRAY shuffling warning (np.random.default_rng.shuffle). Corrigé en convertissant en `np.array(..., dtype=object)` avant shuffle.
+
+### Décisions techniques internes (D-017, D-018, D-019 ajoutées)
+- **D-017** : ML predictions dans `public_data.dpe` (pas de table séparée), discriminé par `source`.
+- **D-018** : RandomForest 200 arbres / max_depth=15 / spatial split 70/30, 15 features listées.
+- **D-019** : `building_neighborhood_train` permanente (skip si peuplée).
+
+### Limitations connues
+- **Biais F/G non résolu** : décision partenaire requise (B-006).
+- **15 features seulement** : on n'utilise pas tout BDNB (~400 attrs). À enrichir post-validation si nécessaire.
+- **hauteur_m uniquement BDNB** : crossvalidation BD TOPO pas faite encore (J5+).
+- **Zone climatique grossière** : par dpt. Raffinement par commune INSEE possible.
+
+### Bloqueurs ouverts
+- **B-006** ouvert (ML biais F/G).
+- B-001 (TTL session Managed Agents) inchangé.
+
+### Prochaine étape
+- **Attente décision partenaire B-006**.
+- Si (b) refit balanced : ~15 min de réentraînement, re-tester métriques.
+- Si (a) accept-as-is ou (b) post-refit : lancer prédiction massive (`scripts/predict_dpe_ml.py --all`, à créer) → INSERT into `dpe` avec `source='ml-predicted'` → re-batch scoring → 100 % couverture.

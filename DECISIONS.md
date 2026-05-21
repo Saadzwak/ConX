@@ -454,3 +454,90 @@ Bornes sanity de `annee_constr` : `[1000, 2030]`. Test `test_annee_constr_plausi
 - Test `test_annee_constr_plausible` borné `[1000, 2030]`.
 - `scripts/db_status.py` distingue "années hors borne" (= aberrant) et "patrimoine pré-1800" (= légitime).
 - **Pattern à retenir** : pour les seuils sanity, dériver de la donnée empirique (`min`/`max`/distribution), pas d'a priori. Les a priori projettent les habitudes du dev sur la réalité du domaine.
+
+---
+
+## D-017 — ML predictions DPE stockées dans `public_data.dpe` (pas de table séparée)
+
+**Date** : 2026-05-21
+**Contexte** : brief J5 partner — "Source mention obligatoire dans la table dpe : source = 'ml-predicted', model_version, confidence, prediction_date". Le partenaire impose la table `dpe` comme cible.
+
+### Décision
+Stocker les prédictions ML dans la même table `public_data.dpe` que les DPE réels (BDNB), discriminés par une colonne `source` ∈ {`ademe-real`, `ml-predicted`}. Identifiant synthétique `'ml-pred-<building_id>'` pour respecter la contrainte UNIQUE `(building_id, identifiant_dpe)`.
+
+### Conséquences (migration 010)
+- Ajout colonnes à `public_data.dpe` : `source` (NOT NULL DEFAULT 'ademe-real'), `model_version` (hash sha256-8 du `.pkl`), `confidence` (probabilité de la classe prédite), `prediction_date`, `predicted_classes_top3` (text[], fourchette), `clipped` (boolean).
+- 4 colonnes booléennes anomalies (brief J5 §5) : `anomaly_rt2012_unexpected`, `anomaly_re2020_unexpected`, `anomaly_pac_low_class`, `anomaly_neighborhood_outlier`.
+- CHECK constraint : `source IN ('ademe-real', 'ml-predicted')`.
+- Index sur `source` + index partiel sur `building_id WHERE anomaly_*`.
+- Ajout `public_data.buildings.dpe_source` text pour tracer l'origine du `dpe_classe` denormalisé.
+
+### Justifications
+- **Symétrie** : un bâtiment a UN DPE valide à un instant donné (réel OU estimé). Une table unique reflète cela.
+- **Cross-source filtering UI** : `WHERE source = 'ademe-real'` pour le mode "DPE certifié uniquement", `WHERE source = 'ml-predicted'` pour le mode "estimations".
+- **`building_scores.dpe_source`** déjà aligné sur ces 2 valeurs (SCORING.md §Implémentation).
+
+### Alternative écartée
+Table `dpe_predictions` séparée. Avantage : schémas distincts pour réel vs prédit. Inconvénient : duplication des jointures, complexité accrue, et conflit avec la directive explicite du partenaire.
+
+---
+
+## D-018 — ML : Random Forest scikit-learn (200 arbres, max_depth=15), split spatial 70/30 par commune INSEE
+
+**Date** : 2026-05-21
+**Contexte** : brief J5 partner — choix de modèle pour estimation DPE des ~2.7 M bâtiments sans DPE réel HDF.
+
+### Décision
+- **Modèle** : RandomForestClassifier (cible classe A-G) + RandomForestRegressor (cible kWh ep/m²/an), entraînés en parallèle.
+- **Hyperparamètres** : `n_estimators=200, max_depth=15, n_jobs=-1, random_state=42` (gravés dans `backend/app/ml/train.TrainingConfig`).
+- **Split spatial** : par commune INSEE, 70 % communes en train / 30 % en test, `random_state=42` pour reproductibilité.
+- **Features** : 15 features (cf. `backend/app/ml/features.py` docstring) — annee_constr + période réglementaire, surface_m2, hauteur_m, nb_logements, type_principal, materiau_mur, type_proprietaire, monument_historique, spr, dept, zone_climatique, ECS individuelle/collective, neighborhood_dpe_class_mean (k=20 PostGIS), neighborhood_dpe_class_count.
+
+### Justifications
+- **Random Forest** : robuste, interprétable, gère bien les categorical mélangées avec numeric, pas d'hyperparamètre tuning agressif nécessaire. Le brief J5 le spécifie explicitement.
+- **Split spatial OBLIGATOIRE** : éviter la fuite via autocorrélation spatiale (neighborhood_mean). Un split aléatoire ferait que test = voisins du train, sur-estimation accuracy.
+- **k=20 voisinage** (au lieu du k=5 historique du plan) : brief J5 §2 explicite.
+- **`zone_climatique` par dpt** : approximation acceptable au MVP (les 5 dpts HDF sont en H1a/H1b). Raffinement par commune INSEE possible post-MVP si besoin.
+
+### Conséquences
+- Module `backend/app/ml/{features,train,predict}.py` créés.
+- Script `scripts/train_dpe_ml.py` lance le pipeline complet, avec STOP obligatoire à la fin pour validation partenaire.
+- Métriques calculées sur hold-out spatial : accuracy ±1 classe, accuracy stricte, MAE kWh, matrice de confusion 7 x 7.
+- Sauvegarde `data/storage/ml/dpe_estimator_<sha8>.pkl` + JSON metrics.
+
+### Seuils d'acceptation (brief J5 §4)
+- accuracy ±1 ≥ 75 % : déploiement normal (badge orange "DPE estimé par IA").
+- 60 % ≤ accuracy ±1 < 75 % : déploiement avec avertissement "fiabilité moyenne".
+- accuracy ±1 < 60 % : NE PAS DÉPLOYER. Stockage en base avec flag, masqué en UI.
+
+### Risques tracés
+- Risque R3 (ML DPE prédictions absurdes) mitigé par : 4 règles d'anomalie déterministes (brief J5 §5), écrêtage kWh à [0, 800], pas de clamp dur sur classe, affichage UI explicite "estimation".
+
+---
+
+## D-019 — Features ML : neighborhood_dpe_class_mean stockée dans `public_data.building_neighborhood_train`
+
+**Date** : 2026-05-21
+**Contexte** : la feature `neighborhood_dpe_class_mean` (k=20 voisins PostGIS) est coûteuse à calculer (~15-30 min sur 417k bâtiments avec DPE réel). Recalculer à chaque entraînement serait inefficient.
+
+### Décision
+Pré-calculer la classe DPE moyenne du voisinage k=20 (ordinale, sur les voisins avec DPE réel) dans une table dédiée `public_data.building_neighborhood_train`, indexée sur `building_id`. Réutilisée par : (1) entraînement, (2) prédiction massive (J5 phase 2).
+
+### Schéma
+```sql
+public_data.building_neighborhood_train (
+  building_id text PRIMARY KEY REFERENCES buildings,
+  mean_ordinal numeric,         -- moyenne sur 1..7 (A=1..G=7)
+  count int,                    -- nb voisins effectifs (typiquement k=20)
+  computed_at timestamptz DEFAULT now()
+);
+```
+
+### Justifications
+- **Performance** : 15-30 min de pré-calcul, < 1 sec de lookup en JOIN ensuite.
+- **Cohérence** : training et prediction utilisent la MÊME définition de voisinage.
+- **Recalcul** : si on ajoute de nouveaux DPE réels (ré-ingestion BDNB), DROP TABLE + recompute. Idempotent via PRIMARY KEY.
+
+### Conséquences
+- Migration nouvelle requise (à créer en cours d'exécution si table absente — fait directement par le script).
+- Table à DROP manuellement pour forcer un recalcul.

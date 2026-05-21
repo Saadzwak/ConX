@@ -173,3 +173,71 @@ Deux patterns possibles :
 
 ### Décision attendue (à J11)
 Confirmer le pattern 1 (recommandé) ou imposer le pattern 2 si le partenaire a une contrainte de sécurité particulière.
+
+---
+
+## B-006 — ML estimation DPE : biais structurel vers classes médianes D/E (cible F/G ratée)
+
+**Date d'ouverture** : 2026-05-22
+**Sévérité** : IMPORTANT (impact direct sur la valeur produit — cible passoires F/G)
+**Pour quand** : décision partenaire AVANT prédiction massive (brief J5 §11 STOP atteint)
+
+### Contexte
+Modèle ML entraîné (v `560402f6`) sur 309 069 bâtiments (2 635 communes train, 1 128 test). Split spatial OK, métriques :
+
+- **Accuracy ±1 classe : 83.48 %** ✅ → seuil "OBJECTIF VISÉ" du brief J5 §4 atteint (≥ 75 %).
+- Accuracy stricte : 41.97 %.
+- MAE consommation : 67.6 kWh ep/m²/an.
+
+Mais l'analyse de la matrice de confusion révèle un biais sévère vers les classes médianes (D, E) :
+
+| Classe réelle | Total test | Correctement prédit | Taux exact | Prédit en D principalement |
+|---|---|---|---|---|
+| A | 1 191 | 203 | 17 % | n/a |
+| B | 2 072 | 222 | 11 % | 677 (D) |
+| C | 19 692 | 6 000 | 30 % | 11 435 (D) |
+| D | 39 305 | 30 020 | 76 % | — |
+| E | 27 726 | 8 888 | 32 % | 18 368 (D) |
+| **F** | **11 057** | **82** | **0.7 %** ⚠️ | 6 446 (D) |
+| **G** | **7 213** | **22** | **0.3 %** ⚠️ | 4 146 (D) |
+
+**Implication critique** : les passoires F/G (cible #1 de ConX) sont **systématiquement prédites D** par le modèle. Le `accuracy ±1 = 83.48 %` cache ce biais car D ↔ E est à 1 classe d'écart mais D ↔ F est à 2 (hors ±1). Vérification accuracy ±1 PAR CLASSE (lignes du test set):
+- D (ord 4) : ±1 = C/D/E corrects = (2240 + 30020 + 6957) / 39305 = **99.6 %**
+- F (ord 6) : ±1 = E/F/G corrects = (4415 + 82 + 12) / 11057 = **40.8 %**
+- G (ord 7) : ±1 = F/G corrects (E à ord 5 est à 2 classes de G) = (18 + 22) / 7213 = **0.55 %** ⚠️
+
+### Échantillon 10 prédictions (model v560402f6)
+```
+bg_id                    dept  annee  TYPE                  REAL  PRED  CONF   kWh-r kWh-p
+bdnb-bg-YHFQ-X6XX-H7G1   59    1922   Résidentiel individ   E     E     0.38   316   290    ✓
+bdnb-bg-D3LC-ZL1T-NCN5   59    1975   Résidentiel individ   F     D     0.47   416   251    ❌ passoire ratée
+bdnb-bg-3LZV-CK5Q-5C6W   60    2004   Résidentiel individ   C     D     0.40   145   195    ±1 OK
+bdnb-bg-AUCF-BF7V-75U6   59    1974   Résidentiel individ   D     D     0.51   193   240    ✓
+bdnb-bg-MZE3-JQD9-QBLN   59    1921   Résidentiel individ   D     D     0.43   213   240    ✓
+bdnb-bg-C6W9-Y884-PAM5   59    1957   Résidentiel individ   C     D     0.38   178   256    ±1 OK
+bdnb-bg-3FZE-2XUY-6G1X   59    1959   Résidentiel individ   E     E     0.39   322   287    ✓
+bdnb-bg-AEDD-EU3K-U7Z5   02    1922   Tertiaire & Autres    G     D     0.34   380   285    ❌ passoire ratée (écart 3)
+bdnb-bg-DYCZ-S5HB-BB49   80    1978   Résidentiel individ   F     D     0.38   232   247    ❌ passoire ratée
+bdnb-bg-NH4T-SH9J-J217   60    1800   Résidentiel individ   D     D     0.34   239   276    ✓
+```
+Exact 5/10, ±1 7/10. **3/10 passoires ratées** = 30 % d'échec sur la cible principale.
+
+### Pourquoi le biais
+- Random Forest avec `class_weight=None` (par défaut) optimise l'accuracy globale → préfère prédire D (36 % du dataset) que F (10 %) ou G (7 %).
+- Le seuil brief J5 §4 (accuracy ±1 ≥ 75 %) est satisfait techniquement mais ne capte pas la performance sur les classes extrêmes.
+
+### Options techniques
+1. **Accepter** : déploiement avec UI masquant les prédictions de basse confidence + avertissement fort. Le 83.48 % satisfait le seuil mais le produit ne fera pas son job sur les passoires.
+2. **Class weights** : refit avec `class_weight='balanced'` (sklearn) ou poids manuels (F, G x3). Réduit l'accuracy ±1 globale (~75-80 %) mais améliore F/G drastiquement. Réentraînement ~5 min.
+3. **Stratified oversampling F/G** : sur-échantillonner F/G en training. Risque overfitting.
+4. **Modèle ordinal regression** : respect natif de l'ordre A→G. Pas dans le brief J5, plus de temps.
+5. **Garde-fou règle anomalie inversée** : si `neighborhood_dpe_class_mean` ≥ 5 (vers E/F/G) et prédiction D, déclencher passoire suspectée. Patch léger.
+
+### Décision attendue
+**Partenaire** : choisir option (a) accepter / (b) refit balanced / (c) explorer alternative. Le brief J5 §11 prévoit explicitement ce STOP.
+
+### En attendant
+- Modèle `dpe_estimator_560402f6.pkl` sauvegardé, **NON déployé**.
+- `public_data.dpe` ne contient **aucune ligne** `source = 'ml-predicted'` (aucune prédiction massive lancée).
+- Les 2 705 160 bâtiments sans DPE restent flagués `incomplete_data = true` dans `building_scores`.
+- Le scoring **fonctionne déjà sans ML** (fallback midpoint typologie + confidence basse). Pas de régression UI.

@@ -220,6 +220,8 @@ def print_metrics(metrics_dict: dict) -> None:
     print("\n" + "=" * 60)
     print("METRIQUES HOLD-OUT SPATIAL (cible brief J5 sec 4)")
     print("=" * 60)
+    if metrics_dict.get("class_weight") is not None:
+        print(f"  class_weight : {metrics_dict['class_weight']}")
     acc_pm1 = metrics_dict["accuracy_plus_minus_1"]
     print(f"  Accuracy +-1 classe         : {acc_pm1 * 100:.2f} %")
     if acc_pm1 >= 0.75:
@@ -240,6 +242,19 @@ def print_metrics(metrics_dict: dict) -> None:
         f"  Test rows                   : {metrics_dict['n_test']:,} "
         f"({metrics_dict['n_test_communes']} communes)"
     )
+    # Per-class accuracy ±1 (critique B-006/D-020)
+    if "accuracy_pm1_per_class" in metrics_dict:
+        print("\n  Accuracy +-1 PAR CLASSE (D-020 v2 — critere F/G):")
+        print(f"      {'Classe':<6} {'n_test':>8} {'±1 %':>8}  Verdict")
+        for classe in "ABCDEFG":
+            n = metrics_dict["n_per_class"].get(classe, 0)
+            acc = metrics_dict["accuracy_pm1_per_class"].get(classe, 0.0)
+            verdict = ""
+            if classe == "F":
+                verdict = "[OK]" if acc >= 0.60 else "[FAIL >=60%]"
+            elif classe == "G":
+                verdict = "[OK]" if acc >= 0.50 else "[FAIL >=50%]"
+            print(f"      {classe:<6} {n:>8,} {acc * 100:>7.2f}%  {verdict}")
     print("\n  Matrice de confusion (lignes = reel A-G | colonnes = predit A-G) :")
     cm = metrics_dict["confusion_matrix"]
     print(f"      {' '.join(f'{c:>6}' for c in 'ABCDEFG')}")
@@ -260,11 +275,41 @@ def main() -> int:
         action="store_true",
         help="Skip le pré-calcul neighborhood (suppose déjà fait).",
     )
+    parser.add_argument(
+        "--class-weight",
+        default=None,
+        help=(
+            "Class weight pour le classifier RF. "
+            "Valeurs : 'balanced' (sklearn auto, D-020 v2), 'none', "
+            'ou JSON dict (ex: \'{"F":3,"G":5}\'). Défaut : None (v1 baseline).'
+        ),
+    )
+    parser.add_argument(
+        "--tag",
+        default=None,
+        help="Tag ajouté au nom du pkl (ex: 'v2_balanced'). Sinon, hash seul.",
+    )
     args = parser.parse_args()
+
+    # Parse --class-weight
+    cw_arg: str | dict | None = None
+    if args.class_weight is not None:
+        s = args.class_weight.strip()
+        if s.lower() in ("none", "null", ""):
+            cw_arg = None
+        elif s == "balanced":
+            cw_arg = "balanced"
+        elif s.startswith("{"):
+            import json as _json
+
+            cw_arg = _json.loads(s)
+        else:
+            raise SystemExit(f"--class-weight invalide : {args.class_weight!r}")
 
     feature_config_path = ROOT / "config" / "zone_climatique_dpt.yaml"
     feature_config = load_feature_config(feature_config_path)
-    training_config = TrainingConfig()
+    training_config = TrainingConfig(class_weight=cw_arg)
+    logger.info(f"TrainingConfig.class_weight = {training_config.class_weight}")
 
     out_dir = ROOT / "data" / "storage" / "ml"
     conn_str = get_conn_str()
@@ -282,13 +327,19 @@ def main() -> int:
         clf, reg, dummy_cols, feature_config, metrics, out_dir
     )
 
+    # Tag optionnel : rename dpe_estimator_<hash>.pkl en dpe_estimator_<tag>_<hash>.pkl
+    if args.tag:
+        new_pkl = out_dir / f"dpe_estimator_{args.tag}_{version}.pkl"
+        new_json = out_dir / f"dpe_estimator_{args.tag}_{version}_metrics.json"
+        model_path.rename(new_pkl)
+        (out_dir / f"dpe_estimator_{version}_metrics.json").rename(new_json)
+        model_path = new_pkl
+
     logger.info(f"Modèle sauvegardé : {model_path.name} (version {version})")
     print_metrics(metrics.to_dict())
-    print(f"📁 Modèle : {model_path}")
-    print(
-        f"📊 Metrics : {model_path.with_name(f'dpe_estimator_{version}_metrics.json')}"
-    )
-    print("\n⛔ STOP — Validation partenaire requise avant prédiction massive.\n")
+    print(f"[modele]  {model_path}")
+    print(f"[metrics] {model_path.with_suffix('').as_posix()}_metrics.json")
+    print("\n[STOP] Validation partenaire requise avant prediction massive.\n")
     return 0
 
 

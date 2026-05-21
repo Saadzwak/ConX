@@ -481,3 +481,83 @@ Le commit message contenait trois valeurs cosmétiquement incorrectes (probablem
 | n_test | 78 818 | **108 256** |
 
 Accuracy ±1 = 83.48 %, n_train = 309 069, et toutes les autres métriques sont identiques. Pas d'impact sur la décision B-006.
+
+---
+
+## 2026-05-22 — Session 7 (J5 refit v2 — class_weight='balanced')
+
+**Heure début** : 2026-05-22 00:25 (décision partenaire reçue après STOP B-006)
+**Heure fin (training)** : 2026-05-22 00:35:52 (v2 sauvegardé)
+**Objectif** : (1) docs correctif sur métriques commit e8ad8e5, (2) backup v1 sous nom explicite, (3) extension code pour `class_weight` + per-class accuracy ±1, (4) refit v2 avec `class_weight='balanced'`, (5) diagnostic v1 vs v2 sur les mêmes 10 building_ids.
+
+### Ce qui a marché
+- **docs corrigendum** : commit `1a43e5b` reprend les vraies valeurs (accuracy stricte 41.97 %, MAE 67.6, n_test 108 256) qui étaient déjà dans les sources de vérité (BUILD_LOG/BLOCKERS/JSON).
+- **v1 sauvegardé** sous `data/storage/ml/dpe_estimator_v1_baseline_560402f6.pkl` (180 MB, gitignored).
+- **Extension code** :
+  - `TrainingConfig.class_weight` (str | dict | None) défaut `None` = v1 baseline.
+  - `ModelMetrics` étendu : `accuracy_pm1_per_class` (dict A..G) + `n_per_class` + `class_weight` (traçabilité).
+  - `evaluate()` calcule l'accuracy ±1 par classe (boucle masque par classe réelle).
+  - `scripts/train_dpe_ml.py` : args `--class-weight` (valeurs `balanced` / `none` / JSON dict) et `--tag` (nommage explicite).
+  - `print_metrics()` affiche le per-class avec verdicts F (≥ 60 %) / G (≥ 50 %).
+- **Tests** : 75/75 passent (53 ML + 22 scoring, 24 skipped DB-dépendants).
+- **Refit v2** : `class_weight='balanced'`, 264 939 train / 152 386 test, 2 635 / 1 128 communes.
+  - Classifier : 23 s (200 arbres, max_depth=15).
+  - Regressor : 86 s (inchangé vs v1).
+  - Modèle sauvegardé : `data/storage/ml/dpe_estimator_v2_balanced_de48d81c.pkl` (180 MB, gitignored).
+- **Diagnostic v1 vs v2 sur les 10 mêmes building_ids** (seed=42 deterministe dans `predict_dpe_ml_sample.py`).
+
+### Métriques v2 (hold-out spatial)
+
+| Métrique | v1 (560402f6) | v2 (de48d81c balanced) | Seuil partenaire | Verdict v2 |
+|---|---|---|---|---|
+| Accuracy ±1 globale | 83.48 % | **67.18 %** | ≥ 70 % | ❌ -2.82 pts |
+| Accuracy stricte | 41.97 % | 32.29 % | — | informatif |
+| **Accuracy ±1 sur F** | **40.80 %** | **84.70 %** | ≥ 60 % | ✅ +43.9 pts |
+| **Accuracy ±1 sur G** | **0.55 %** | **73.15 %** | ≥ 50 % | ✅ +72.6 pts |
+| MAE consommation kWh | 67.60 | 68.04 | ≤ 90 | ✅ |
+
+Per-class accuracy ±1 v2 :
+- A : 60.28 %  |  B : 63.71 %  |  C : 64.18 %  |  D : 65.07 %
+- E : 64.36 %  |  F : 84.70 %  |  G : 73.15 %
+
+→ **Répartition désormais uniforme** (60–85 %), plus de biais central D au détriment de F/G.
+
+### Échantillon 10 bâtiments v1 vs v2 (mêmes building_id, seed=42)
+
+| dept | annee | TYPE | REAL | v1 PRED | v2 PRED | Note |
+|---|---|---|---|---|---|---|
+| 59 | 1922 | Résid. indiv. | E | E ✓ | E ✓ | stable exact |
+| 59 | 1975 | Résid. indiv. | F | D ❌ | D ❌ | passoire F ratée |
+| 60 | 2004 | Résid. indiv. | C | D | D | ±1 OK stable |
+| 59 | 1974 | Résid. indiv. | D | D ✓ | D ✓ | stable exact |
+| 59 | 1921 | Résid. indiv. | D | D ✓ | D ✓ | stable exact |
+| 59 | 1957 | Résid. indiv. | C | D | E | dégradé (écart 2) |
+| 59 | 1959 | Résid. indiv. | E | E ✓ | F | ±1 OK |
+| 02 | 1922 | Tertiaire | G | D ❌ | **G ✓** | **passoire G capturée v2** |
+| 80 | 1978 | Résid. indiv. | F | D ❌ | E | passoire F ratée mais ±1 |
+| 60 | 1800 | Résid. indiv. | D | D ✓ | G ❌ | dégradé (écart 3) |
+
+Exact match : 5/10 → 4/10 (-1). ±1 : 7/10 → 7/10 (stable). **Passoires capturées : 0/3 (v1) → 1/3 (v2)**. La G qui avait été prédite D par v1 est maintenant correctement prédite G par v2.
+
+### Décision STOP — v2 ne satisfait pas les 4 critères
+> Partenaire : "Si v2 atteint ces 4 seuils : on déploie v2. Si v2 ne les atteint pas : on rediscute, on garde v1 en attendant, on n'écrête rien."
+
+→ **STOP atteint**. v2 manque le critère global ±1 (67.18 % < 70 %). 3/4 OK. Présentation des options au partenaire :
+
+1. **Accepter v2** malgré 67.18 % global (la zone 60–75 % du brief J5 §4 est "ACCEPTABLE AVEC AVERTISSEMENT"). L'amélioration F/G est dramatique et alignée avec la mission ConX.
+2. **Refit v3 avec poids manuels** `{F:2, G:3}` ou similaire — tenter un compromis entre v1 (biais central) et v2 (équilibrage agressif). Possiblement remonter le ±1 global au-dessus de 70 % tout en gardant F/G ≥ 60/50 %.
+3. **Garder v1** en attendant et explorer alternative (XGBoost, oversampling).
+
+### Décisions techniques internes (D-020 ajoutée)
+- **D-020** : refit `class_weight='balanced'` validé technique, déploiement en attente d'arbitrage critère global ±1.
+
+### Observation tracée
+n_train/n_test diffère entre runs (309k/108k v1 vs 265k/152k v2), bien que n_train_communes/n_test_communes soient identiques (2 635 / 1 128). Cause : pas d'`ORDER BY building_id` dans `load_training_dataframe` → l'ordre `unique()` des communes varie → shuffle déterministe sur entrée non-déterministe. Les test sets sont donc approximativement comparables, pas strictement. Fix simple à faire au prochain refit (ajout `ORDER BY building_id ASC` SQL).
+
+### Bloqueurs ouverts
+- **B-006** mis à jour avec les métriques v2 et les 3 options ci-dessus.
+- B-001 (TTL session Managed Agents) inchangé.
+
+### Prochaine étape
+- Attente décision partenaire entre (1) accepter v2 / (2) refit v3 poids manuels / (3) garder v1 + alternative.
+- **Aucune** prédiction massive ni recalcul scoring tant que décision non prise.

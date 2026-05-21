@@ -241,3 +241,70 @@ Exact 5/10, ±1 7/10. **3/10 passoires ratées** = 30 % d'échec sur la cible pr
 - `public_data.dpe` ne contient **aucune ligne** `source = 'ml-predicted'` (aucune prédiction massive lancée).
 - Les 2 705 160 bâtiments sans DPE restent flagués `incomplete_data = true` dans `building_scores`.
 - Le scoring **fonctionne déjà sans ML** (fallback midpoint typologie + confidence basse). Pas de régression UI.
+
+---
+
+### Mise à jour 2026-05-22 — Arbitrage partenaire = option (b) → v2 entraîné, **3/4 critères OK**, attente nouvelle décision
+
+**Décision partenaire reçue** : option (b) refit `class_weight='balanced'` (cf. D-020). v1 conservé sous `dpe_estimator_v1_baseline_560402f6.pkl`.
+
+**Critères d'acceptation fixés par le partenaire** :
+
+| # | Critère | Seuil | v1 baseline | v2 balanced | Verdict v2 |
+|---|---|---|---|---|---|
+| 1 | Accuracy ±1 globale | ≥ 70 % | 83.48 % | **67.18 %** | ❌ -2.82 pts |
+| 2 | Accuracy ±1 sur F | ≥ 60 % | 40.80 % | **84.70 %** | ✅ +43.9 pts |
+| 3 | Accuracy ±1 sur G | ≥ 50 % | 0.55 % | **73.15 %** | ✅ +72.6 pts |
+| 4 | MAE consommation | ≤ 90 | 67.60 | 68.04 | ✅ |
+
+**3/4 critères atteints, 1 raté (le global ±1 de 2.82 points).** Partenaire : "Si v2 ne les atteint pas : on rediscute, on garde v1 en attendant, on n'écrête rien."
+
+Per-class accuracy ±1 v2 — répartition désormais uniforme (60–85 %) :
+- A : 60.28 %  |  B : 63.71 %  |  C : 64.18 %  |  D : 65.07 %
+- E : 64.36 %  |  F : 84.70 %  |  G : 73.15 %
+
+Plus de biais central D. Tous les sept ±1 par classe sont entre 60 et 85 %, contre v1 qui oscillait entre 0.55 % (G) et 99.6 % (D).
+
+### Échantillon 10 prédictions v1 vs v2 (mêmes building_id, seed=42)
+
+| dept | annee | TYPE | REAL | v1 | v2 | Évolution |
+|---|---|---|---|---|---|---|
+| 59 | 1922 | Résid. indiv. | E | E ✓ | E ✓ | stable exact |
+| 59 | 1975 | Résid. indiv. | F | D ❌ | D ❌ | passoire F toujours ratée |
+| 60 | 2004 | Résid. indiv. | C | D | D | ±1 OK stable |
+| 59 | 1974 | Résid. indiv. | D | D ✓ | D ✓ | stable exact |
+| 59 | 1921 | Résid. indiv. | D | D ✓ | D ✓ | stable exact |
+| 59 | 1957 | Résid. indiv. | C | D | E | dégradé (écart 2) |
+| 59 | 1959 | Résid. indiv. | E | E ✓ | F | ±1 OK |
+| 02 | 1922 | Tertiaire | G | D ❌ | **G ✓** | **passoire G capturée** |
+| 80 | 1978 | Résid. indiv. | F | D ❌ | E | passoire F ratée mais ±1 |
+| 60 | 1800 | Résid. indiv. | D | D ✓ | G ❌ | dégradé (écart 3) |
+
+Exact match : 5/10 → 4/10 (-1). ±1 : 7/10 stable. **Passoires F/G capturées : 0/3 → 1/3** (la G ratée par v1 est correctement prédite par v2, mais le modèle commence à sur-prédire G sur des D mal-isolés du 1800).
+
+### Trois options proposées au partenaire (aucune action lancée)
+
+**Option (a) — Accepter v2** malgré 67.18 % global.
+- Le brief J5 §4 classe 60–75 % comme "ACCEPTABLE AVEC AVERTISSEMENT" (intermédiaire entre "OBJECTIF VISÉ" ≥ 75 % et "NE PAS DÉPLOYER" < 60 %).
+- L'amélioration F/G est dramatique et alignée avec la mission ConX.
+- UI : badge orange "estimation IA — fiabilité moyenne" + masquage des prédictions de très basse confidence.
+- Risque : 4/10 exact match au lieu de 5/10 (recul léger sur prédiction parfaite).
+
+**Option (b) — Refit v3 avec poids manuels**, par exemple `{F: 2.0, G: 3.0}` (ou variantes).
+- Compromis entre v1 (biais central, ±1 global 83.48 %) et v2 (équilibrage agressif, F/G excellents mais global 67.18 %).
+- Cible : remonter ±1 global ≥ 70 % tout en gardant F ≥ 60 % et G ≥ 50 %.
+- Réentraînement ~5 min. Itérable en 2–3 essais pour caler les poids.
+- Recommandation interne : si tu veux le seuil 70 % strict, c'est la voie la plus directe.
+
+**Option (c) — Garder v1 + explorer alternative** (XGBoost avec `scale_pos_weight`, oversampling SMOTE F/G, ordinal regression).
+- Plus de temps de R&D, mais possibilité de gains plus importants.
+- Sort du brief J5 strict (qui spécifie Random Forest sklearn).
+
+### En attendant (état actuel inchangé)
+- **Aucune** prédiction massive ni recalcul scoring lancés.
+- `public_data.dpe` toujours sans ligne `source = 'ml-predicted'`.
+- v1 (`560402f6`) et v2 (`de48d81c`) tous deux sauvegardés sur disque, gitignorés.
+- Le scoring fonctionne sans ML (fallback typologie midpoint).
+
+### Décision attendue (rebond)
+Choisir entre (a) accepter v2 / (b) refit v3 poids manuels / (c) garder v1 + alternative.

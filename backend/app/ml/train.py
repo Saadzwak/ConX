@@ -55,6 +55,11 @@ class TrainingConfig:
     random_state: int = 42
     test_communes_frac: float = 0.30  # 30 % des communes → test
     neighborhood_k: int = 20  # k=20 voisins (brief J5)
+    # Class weight pour le classifier RF (D-020 v2 : 'balanced' contre biais F/G).
+    # None = pas de pondération (comportement v1 baseline).
+    # 'balanced' = sklearn auto-pondère inversement à la fréquence des classes.
+    # dict {classe: poids} = poids manuels (ex: {'F': 3.0, 'G': 5.0}).
+    class_weight: str | dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -132,17 +137,22 @@ def accuracy_within_n_classes(y_true: pd.Series, y_pred: pd.Series, n: int = 1) 
 class ModelMetrics:
     accuracy_strict: float  # bonne classe exacte
     accuracy_plus_minus_1: float  # ±1 classe (cible brief J5)
+    accuracy_pm1_per_class: dict[str, float]  # ±1 par classe réelle (D-020 v2 : critique pour F/G)
+    n_per_class: dict[str, int]  # n test par classe réelle (lecture matrice)
     mae_kwh: float  # MAE régression conso
     confusion_matrix: list[list[int]]  # matrice 7 x 7 (A..G train | A..G pred)
     n_train: int
     n_test: int
     n_train_communes: int
     n_test_communes: int
+    class_weight: Any = None  # None | 'balanced' | dict — pour traçabilité
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "accuracy_strict": round(self.accuracy_strict, 4),
             "accuracy_plus_minus_1": round(self.accuracy_plus_minus_1, 4),
+            "accuracy_pm1_per_class": {k: round(v, 4) for k, v in self.accuracy_pm1_per_class.items()},
+            "n_per_class": dict(self.n_per_class),
             "mae_kwh": round(self.mae_kwh, 2),
             "confusion_matrix": self.confusion_matrix,
             "confusion_matrix_labels": list("ABCDEFG"),
@@ -150,6 +160,9 @@ class ModelMetrics:
             "n_test": self.n_test,
             "n_train_communes": self.n_train_communes,
             "n_test_communes": self.n_test_communes,
+            "class_weight": self.class_weight
+            if not isinstance(self.class_weight, dict)
+            else {str(k): float(v) for k, v in self.class_weight.items()},
         }
 
 
@@ -162,8 +175,9 @@ def evaluate(
     n_train: int,
     n_train_communes: int,
     n_test_communes: int,
+    class_weight: Any = None,
 ) -> ModelMetrics:
-    """Calcule les 4 métriques du brief J5 sur le hold-out."""
+    """Calcule les 4 métriques du brief J5 sur le hold-out + per-class ±1 (D-020)."""
     y_pred_class = pd.Series(clf.predict(X_test), index=X_test.index)
     y_pred_kwh = reg.predict(X_test)
 
@@ -172,15 +186,30 @@ def evaluate(
     mae = float(mean_absolute_error(y_test_kwh, y_pred_kwh))
     cm = confusion_matrix(y_test_class, y_pred_class, labels=list("ABCDEFG")).tolist()
 
+    # Per-class accuracy ±1 (critique pour B-006/D-020 v2 : visibilité F et G)
+    acc_pm1_per_class: dict[str, float] = {}
+    n_per_class: dict[str, int] = {}
+    for classe in "ABCDEFG":
+        mask = y_test_class == classe
+        n = int(mask.sum())
+        n_per_class[classe] = n
+        if n == 0:
+            acc_pm1_per_class[classe] = 0.0
+        else:
+            acc_pm1_per_class[classe] = accuracy_within_n_classes(y_test_class[mask], y_pred_class[mask], n=1)
+
     return ModelMetrics(
         accuracy_strict=acc_strict,
         accuracy_plus_minus_1=acc_pm1,
+        accuracy_pm1_per_class=acc_pm1_per_class,
+        n_per_class=n_per_class,
         mae_kwh=mae,
         confusion_matrix=cm,
         n_train=n_train,
         n_test=len(X_test),
         n_train_communes=n_train_communes,
         n_test_communes=n_test_communes,
+        class_weight=class_weight,
     )
 
 
@@ -236,12 +265,16 @@ def fit_models(
     logger.info(f"X_train shape={X_train.shape}, X_test shape={X_test.shape}")
 
     # Train classifier
-    logger.info(f"Train classifier RF (n_estimators={config.n_estimators}, max_depth={config.max_depth}) ...")
+    logger.info(
+        f"Train classifier RF (n_estimators={config.n_estimators}, max_depth={config.max_depth}, "
+        f"class_weight={config.class_weight}) ..."
+    )
     clf = RandomForestClassifier(
         n_estimators=config.n_estimators,
         max_depth=config.max_depth,
         n_jobs=config.n_jobs,
         random_state=config.random_state,
+        class_weight=config.class_weight,
     )
     clf.fit(X_train, y_train_class)
     logger.info("Classifier OK.")
@@ -267,6 +300,7 @@ def fit_models(
         n_train=len(df_train),
         n_train_communes=n_train_communes,
         n_test_communes=n_test_communes,
+        class_weight=config.class_weight,
     )
 
     return clf, reg, metrics, dummy_columns

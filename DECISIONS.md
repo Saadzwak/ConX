@@ -541,3 +541,47 @@ public_data.building_neighborhood_train (
 ### Conséquences
 - Migration nouvelle requise (à créer en cours d'exécution si table absente — fait directement par le script).
 - Table à DROP manuellement pour forcer un recalcul.
+
+---
+
+## D-020 — Refit Random Forest avec `class_weight='balanced'` pour corriger biais F/G (v2)
+
+**Date** : 2026-05-22
+**Statut** : VALIDE — arbitrage partenaire suite à B-006.
+**Catégorie** : ML
+**Contexte** : v1 (`560402f6`) atteignait l'accuracy ±1 globale (83.48 %) mais sous-prédisait massivement les passoires F/G (F ±1 = 40.8 %, G ±1 = 0.55 %). Décision partenaire : refit avec `class_weight='balanced'` (option B de B-006).
+
+### Décision
+- `RandomForestClassifier.class_weight='balanced'` sur le classifier uniquement (le regressor n'a pas ce concept).
+- Reste des hyperparamètres identiques à D-018 (200 arbres, max_depth=15, random_state=42).
+- Nouvelles métriques exposées et persistées : `accuracy_pm1_per_class` (par classe A..G) + `n_per_class` + `class_weight` (traçabilité).
+- v1 conservé sous `data/storage/ml/dpe_estimator_v1_baseline_560402f6.pkl` (fallback).
+- v2 sauvegardé sous `data/storage/ml/dpe_estimator_v2_balanced_de48d81c.pkl`.
+
+### Critères d'acceptation partenaire
+| # | Critère | Seuil | v2 mesuré | Verdict |
+|---|---|---|---|---|
+| 1 | Accuracy ±1 globale | ≥ 70 % | 67.18 % | ❌ |
+| 2 | Accuracy ±1 classe F | ≥ 60 % | 84.70 % | ✅ |
+| 3 | Accuracy ±1 classe G | ≥ 50 % | 73.15 % | ✅ |
+| 4 | MAE consommation | ≤ 90 kWh ep/m²/an | 68.04 | ✅ |
+
+**3/4 critères atteints, le critère global est manqué de 2.82 points.** Décision déploiement v2 : différée — attente arbitrage partenaire (cf. B-006 mise à jour).
+
+### Justifications du choix `balanced` (rejet des alternatives)
+- **`balanced` (retenu)** : pondération automatique sklearn `n_samples / (n_classes * np.bincount(y))`. Simple, reproductible, paramètre unique, recommandé par les manuels en première ligne.
+- **Poids manuels `{F:3, G:5}` (en réserve)** : optionnel si v2 jugé sous-optimal. Plus dirigé, mais ad hoc.
+- **XGBoost avec `scale_pos_weight`** : pas dans le brief J5, change la lib. Reporté.
+- **Stratified oversampling F/G** : risque overfitting + complique le split spatial. Écarté.
+- **Ordinal regression** : respect natif A→G mais hors brief J5, plus de temps.
+
+### Conséquences
+- `TrainingConfig.class_weight` ajouté (défaut `None` = v1 baseline).
+- `ModelMetrics` étendu : `accuracy_pm1_per_class`, `n_per_class`, `class_weight`.
+- `evaluate()` calcule l'accuracy ±1 par classe (boucle masque par classe réelle).
+- `scripts/train_dpe_ml.py` : nouveaux args `--class-weight` et `--tag` (nommage explicite des bundles).
+- Pas de modification du regressor (la régression n'a pas ce concept).
+- Si v2 rejeté par partenaire : v1 reste utilisable (pkl conservé) ou option (c) — exploration alternative.
+
+### Observation tracée (non bloquante)
+Le n_train/n_test diffère entre v1 (309 069 / 108 256) et v2 (264 939 / 152 386) bien que les communes/sizes (2 635 / 1 128) soient identiques. Cause : `load_training_dataframe` n'a pas d'`ORDER BY building_id`, donc l'ordre des `unique()` communes varie d'un run à l'autre → le shuffle pioche d'autres communes. Test sets approximativement comparables (méthodologie 70/30 spatiale identique, n_test_communes = 1 128 fixé), mais sélection précise non reproductible. À corriger en J5+ pour reproductibilité parfaite (ajout `ORDER BY building_id ASC` dans la requête SQL).

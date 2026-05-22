@@ -57,13 +57,17 @@ services:
 
   martin:
     # Sidecar Rust qui sert les tuiles vectorielles MVT depuis postgres_local.
-    # Configuration vide pour l'instant (J1 stub). Activé pleinement en J7.
-    image: ghcr.io/maplibre/martin:v1.10.1
+    # J7 activé : auto-publication restreinte au schéma `tiles` (migrations 011/012).
+    # Config dans martin.yaml monté en /config.yaml.
+    image: ghcr.io/maplibre/martin:latest
     container_name: conx_martin
     restart: unless-stopped
-    command: ["--listen-addresses", "0.0.0.0:3000"]
+    command:
+      - "--config=/config.yaml"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_LOCAL_USER:-conx}:${POSTGRES_LOCAL_PASSWORD}@postgres_local:5432/${POSTGRES_LOCAL_DB:-conx}
+    volumes:
+      - ./martin.yaml:/config.yaml:ro
     ports:
       - "3000:3000"
     depends_on:

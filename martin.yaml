@@ -1,0 +1,19 @@
+# ConX — config martin (J7).
+#
+# Restreint l'auto-discovery au schéma `tiles` (créé en migration 011/012).
+# Évite d'exposer toutes les tables BDNB brutes en MVT (sécurité + clarté catalog).
+
+listen_addresses: 0.0.0.0:3000
+default_srid: 4326
+
+postgres:
+  connection_string: "${DATABASE_URL}"
+  # Auto-publie UNIQUEMENT les tables/vues du schéma `tiles`
+  auto_publish:
+    from_schemas: ["tiles"]
+    tables:
+      source_id_format: "{table}"
+    functions:
+      source_id_format: "{function}"
+  # Limite la résolution coûteuse des bbox (auto-bounds=skip = pas de calcul d'enveloppe)
+  auto_bounds: skip

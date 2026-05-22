@@ -376,3 +376,37 @@ v2 reste mon choix par défaut tant que pas d'override. **STOP pour le GO parten
 
 - Sévérité : RÉSOLU au sens arbitrage (modèle désigné).
 - Reste OUVERT au sens "prédiction massive non lancée" — STOP brief J5 §11 toujours actif.
+
+---
+
+## B-007 — martin auto-discovery non restreint au schéma `tiles`
+
+**Date d'ouverture** : 2026-05-22
+**Sévérité** : MINEUR (localhost dev only — non bloquant J7, à fixer avant déploiement)
+**Pour quand** : J11 (proxy backend avec auth)
+
+### Contexte
+La config `martin.yaml` spécifie `auto_publish.from_schemas: ["tiles"]` mais martin
+v1.10+ continue à découvrir aussi les tables `public_data.*` (buildings, topo_buildings,
+topo_roads). Le service expose donc 9 sources au lieu des 3 attendues.
+
+### Risque
+- Une requête `GET /buildings.1/{z}/{x}/{y}` retourne la géométrie brute non projetée
+  (SRID=2154) sur un chemin lent (pas d'index 4326). Risque de saturation perf si
+  exploité.
+- Surface d'attaque inutile pour un dev/démo.
+
+### Mitigation actuelle
+- Port 3000 non exposé en dehors du localhost.
+- Frontend J14+ utilisera UNIQUEMENT les sources `*_mv` (matérialisées avec index).
+- Le backend FastAPI J11 proxifiera les requêtes tuiles avec contrôle d'accès.
+
+### Fix prévu en J11
+Soit :
+- Tester la syntaxe explicite `tables: { source_id1: {...}, source_id2: {...} }` au lieu
+  d'`auto_publish` (peut-être supporté différemment dans la version utilisée).
+- Soit proxifier 100 % des tuiles via FastAPI avec allow-list explicite des sources.
+
+### En attendant
+- Vérifier que `frontend/lib/api.ts` (J14) référence UNIQUEMENT les 3 sources matérialisées.
+- Documenter dans `docs/TILES_MVT.md` §3 (déjà fait).

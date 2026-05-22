@@ -720,3 +720,71 @@ Métriques retenues pour la doc et le pitch jury :
 - J13 Backend IFC (upload + agent Conformité + PDF).
 - Les jalons J14-J17 frontend nécessitent décisions UX → STOP pour
   arbitrage partenaire au réveil.
+
+---
+
+## 2026-05-22 — Session 10 (J12 Backend Mode Projet — chat itératif)
+
+**Mode** : autonome de nuit (suite GO partenaire).
+
+### Travail effectué
+- **Schéma Supabase** : `scripts/sql/supabase/001_app_schema.sql` créé avec 4
+  tables (`agent_sessions`, `renovation_plans`, `ifc_validations`,
+  `user_preferences`), RLS `auth.uid() = user_id` sur toutes, triggers
+  `updated_at` automatiques. À exécuter par le partenaire via SQL editor
+  Supabase.
+- **Module `supabase_client.py`** : `supabase_for_user(user)` crée un client
+  par requête en propageant le JWT (postgrest.auth) — garantit que la RLS
+  voit le bon `auth.uid()`. `is_supabase_configured()` détecte les
+  placeholders pour mode dégradé.
+- **Module `agents_client.py`** : wrapper Anthropic Managed Agents avec
+  `create_session`, `send_user_message`, `retrieve_session`, `list_events`,
+  helpers SSE (`serialize_event_for_sse`, `keepalive_event`). Lit
+  `agents.lock.yaml` au démarrage pour résoudre les noms d'agent en
+  agent_id (cf. agents/sync.py).
+- **Router `agents.py`** : 5 endpoints
+  - `POST /api/agents/plan/start` (création session + 1er user_message)
+  - `POST /api/agents/plan/:session_id/message` (turn N, incrémente version)
+  - `GET /api/agents/plan/:session_id/stream` (SSE proxy, keepalive 15s,
+    timeout 5 min)
+  - `POST /api/agents/plan/:session_id/persist` (insert app.renovation_plans
+    via Supabase JWT propagé)
+  - `GET /api/agents/plan/:session_id/history` (liste versions v1, v2, ...)
+- **Tests offline** : 10 tests `test_agents_client.py` + 8 tests
+  `test_supabase_client.py` — couvrent les chemins 503 (config absente),
+  serialize SSE, format JWT, beta headers. Total backend : 144 passed,
+  24 skipped (DB integration). 0 ruff warning.
+- **Docs** : `docs/MODE_PROJET.md` complète avec diagrammes, endpoints,
+  schémas Supabase, anti-dérive R13.
+
+### Smoke test
+- `/api/agents/plan/start` sans config Anthropic → 503 propre avec message
+  "ANTHROPIC_API_KEY non défini ou placeholder." (mode dégradé OK).
+- Backend démarre cleanly avec le nouveau router. `/api/health` OK.
+
+### Décisions techniques
+- **SSE polling** (`events.list(after=last)`) au lieu de stream natif, par
+  prudence sur les signatures SDK encore non testées. Migration possible
+  vers `events.stream` en 1 fichier si l'endpoint natif est disponible.
+- **Persistance déclenchée par le frontend** (`POST /persist`) plutôt que
+  parsing serveur du markdown agent. Plus simple, plus robuste, le frontend
+  contrôle quand le plan v(n) est "complet".
+- **Versioning UNIQUE (session_id, version)** côté Supabase + `_next_version`
+  qui lit max(version)+1. Pas d'auto-increment global — chaque session
+  recommence à v1.
+- **Limite stream 5 min** : MAX_STREAM_DURATION_S = 300, anti runaway.
+- **Keepalive 15 s** + `X-Accel-Buffering: no` : traverse Nginx + Cloudflare.
+
+### Bloqueurs ouverts
+- **B-001** (TTL session) : test reporté à J19 (tunnel ngrok + budget partenaire).
+- **B-009** (Skills upload) : partenaire au matin.
+- **B-010** (carbon-calc skill bundle PYTHONPATH) : arbitrage J10.
+- **Nouveau (mineur)** : signatures SDK Anthropic à valider par le partenaire
+  contre la doc actuelle avant la 1re exécution (ROADBLOCK : non-bloquant
+  parce que tout passe par `agents_client.py` — patch unique si signature
+  diffère).
+
+### Prochaine étape
+- J13 Backend IFC (upload + Agent Conformité + PDF) — code pur, pas de
+  dépense engagée.
+- J14-J17 Frontend : décisions UX requises → STOP partenaire.

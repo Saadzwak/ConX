@@ -26,7 +26,10 @@ export const baseStyle: StyleSpecification = {
       ],
       tileSize: 256,
       attribution: "IGN-F/Géoportail (BD Ortho)",
-      maxzoom: 20,
+      // IGN BD Ortho s'arrête à z19 sur la plupart du territoire — déclarer
+      // maxzoom=19 oblige MapLibre à overscaler les tuiles z19 pour les zooms
+      // 20-22 du layer, au lieu de fetcher des z20+ inexistants (404 storm).
+      maxzoom: 19,
       minzoom: 0,
     },
   },

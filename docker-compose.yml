@@ -43,6 +43,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data/storage:/app/data/storage
+      - ./config:/app/config:ro
     depends_on:
       postgres_local:
         condition: service_healthy

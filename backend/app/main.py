@@ -1,7 +1,13 @@
-"""ConX — point d'entrée FastAPI. J1 stub : health endpoint uniquement."""
+"""ConX — point d'entrée FastAPI.
+
+J11 : Mode Stratégie en ligne. Endpoints `/api/buildings`, `/api/internal/*`,
+`/api/exports/*`, `/api/meta/*`. Auth Supabase JWT (D-012) côté `/api/buildings`
+et `/api/exports`. Bypass `X-Internal-Token` pour les Managed Agents (D-013).
+"""
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import UTC, datetime
 
@@ -9,10 +15,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from .db import lifespan
+from .routers import buildings, exports, internal, meta
+
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="[%(asctime)s] %(levelname)s %(name)s — %(message)s",
+)
+
 app = FastAPI(
     title="ConX API",
-    version="0.1.0-j1",
-    description="Plateforme IA pour la rénovation énergétique hors-site (Hauts-de-France).",
+    version="0.11.0-j11",
+    description=(
+        "Plateforme IA pour la rénovation énergétique hors-site (Hauts-de-France). "
+        "J11 : Mode Stratégie + Auth Supabase JWT."
+    ),
+    lifespan=lifespan,
 )
 
 cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
@@ -40,3 +58,10 @@ async def health() -> HealthResponse:
         version=app.version,
         timestamp=datetime.now(UTC).isoformat(),
     )
+
+
+# Routers
+app.include_router(buildings.router)
+app.include_router(exports.router)
+app.include_router(internal.router)
+app.include_router(meta.router)

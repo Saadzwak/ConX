@@ -645,3 +645,78 @@ Métriques retenues pour la doc et le pitch jury :
 - **Attente GO partenaire** pour lancer la prédiction massive avec v2.
 - À lancer après GO : `scripts/predict_dpe_ml.py --all --model data/storage/ml/dpe_estimator_v2_balanced_de48d81c.pkl` (à créer post-arbitrage : INSERT into dpe + UPDATE buildings + recompute scoring).
 - Override possible : le partenaire peut désigner v3 (gain global au prix F/G) au lieu de v2 si la philosophie change.
+
+---
+
+## 2026-05-22 — Session 9 (J5 finalisation + J6 + J7 + J8 stub + J9 Skills + J10 stub + J11 Backend Stratégie)
+
+**Mode** : autonome de nuit (GO partenaire), enchaînement J5→J11.
+
+### Travail effectué
+- **J5 prédiction massive** : `scripts/predict_dpe_ml.py --all` lancé en 2 passes
+  (pass 1 buggée à 50% par OFFSET+UPDATE, fix appliqué, pass 2 OK). Résultat
+  final : `public_data.dpe` couvre 3 122 513 bâtiments (417k ademe-real +
+  2 705k ml-predicted), 100% couverture HDF. `building_scores` recalculé
+  intégralement (compute_building_scores.py --all), 100% couverture.
+- **J6 module carbon** : `backend/app/carbon/` avec exploitation + incorpore +
+  evite_horssite + total, 32 tests passent. Doc `docs/CARBON.md`.
+- **J7 MVT martin** : matview `tiles.buildings_centroids_mv` + heatmap zoom 8
+  en 43 ms (target 2s largement battue). Doc `docs/TILES_MVT.md`.
+- **J8 LiDAR stub** : schéma + scripts paramétrables, exécution différée J15
+  (cf. B-008 IGN URL). Doc `docs/LIDAR_PIPELINE.md`.
+- **J9 Skills bundles** : 6 SKILL.md (carbon-calc, fdes-lookup, ifc-check,
+  horssite-biosource, re2020-target, pmr-checks). Test critique ifcopenshell
+  PASS dans python:3.12-slim. Bloqueurs B-009 + B-010. Doc `docs/SKILLS.md`.
+- **J10 Managed Agents stub** : `agents/agents.yaml`, `agents/sync.py`,
+  `agents/test_ttl.py`, 3 system_prompts, `docs/AGENTS.md`. Non testé contre
+  Anthropic API (règle §9.D — pas de dépense engagée). B-001 TTL ouvert.
+- **J11 Backend Mode Stratégie** : pool asyncpg (`db.py`) + Auth JWT
+  Supabase HS256 (`auth.py`, D-012) + 4 routers :
+  - `/api/buildings` (liste paginée curseur opaque, scoring à la volée)
+  - `/api/buildings/:id` (fiche + geom + 5 voisins)
+  - `/api/internal/score-buildings` + `/api/internal/building/:id` (bypass
+    `X-Internal-Token` pour Managed Agents, D-013)
+  - `/api/exports/strategie.{csv,geojson}` (streaming, BOM UTF-8)
+  - `/api/meta/scoring-config` (config publique)
+  
+  Tests : 20 tests auth offline + 126 unitaires existants (carbon, scoring,
+  ML) tous PASSENT. Smoke test endpoints en local OK :
+  - GET /api/buildings dpt 59 F bailleur_social → top score 0.961 (cohérent
+    avec SCORING.md poids défaut)
+  - Pagination via cursor : page 2 retourne 3 items distincts à scores
+    identiques (ordre stable building_id)
+  - POST /api/internal/score-buildings : refus 400 si aucun filtre (anti-scan
+    3M lignes) ; 401 si X-Internal-Token absent ; 200 sinon
+  - Exports CSV + GeoJSON streaming OK (bug "connection released" corrigé
+    en acquérant une connexion dédiée via `pool.acquire()` au lieu de
+    `Depends(get_db)` qui libère la connexion avant que le stream ne
+    consomme).
+  
+  Docs : `docs/API.md` complète.
+
+### Décisions techniques
+- INNER JOIN avec building_scores sur la liste publique (et non LEFT JOIN) :
+  garantit que tous les rows ont un `score_total` non-null et évite le bug
+  pagination NULL-drop signalé par l'advisor. Justifié par 100% couverture
+  building_scores post-J5.
+- `httpx==0.27.2` au lieu de 0.28.1 : conflit avec supabase 2.10.0 qui exige
+  `<0.28`. Documenté en commentaire dans `requirements.txt`.
+- `INTERNAL_SHARED_TOKEN` vérifié via `hmac.compare_digest()` (timing-safe).
+- Singletons `_QUERY_NONE` / `_QUERY_LIMIT_*` dans exports.py pour éviter
+  les warnings B008 ruff sans dégrader la lisibilité.
+
+### Bloqueurs ouverts
+- B-001 (TTL session Managed Agents) → tester en J19 quand tunnel ngrok actif
+  + partenaire valide la dépense.
+- B-007 (martin auto_publish from_schemas non strict) → résolu par matview
+  dédiées.
+- B-008 (IGN LiDAR URL) → différé J15.
+- B-009 (Skills upload) → partenaire au matin.
+- B-010 (carbon-calc skill PYTHONPATH) → arbitrage J10.
+
+### Prochaine étape
+- J12 Backend Mode Projet (chat itératif Agent Plan + reprise session +
+  persist plans dans Supabase Cloud `app.renovation_plans`).
+- J13 Backend IFC (upload + agent Conformité + PDF).
+- Les jalons J14-J17 frontend nécessitent décisions UX → STOP pour
+  arbitrage partenaire au réveil.

@@ -112,7 +112,9 @@ export function ProjetMap({ building }: Props) {
 
   return (
     <div className="relative h-full w-full">
-      <div ref={containerRef} className="absolute inset-0" />
+      {/* MapLibre force `position: relative` sur .maplibregl-map ; on utilise
+          donc h-full w-full plutôt qu'absolute inset-0 (sinon hauteur = 0). */}
+      <div ref={containerRef} className="h-full w-full" />
       {!building.geom_geojson?.coordinates?.length && (
         <div className="absolute top-3 left-3 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-xs px-3 py-2 max-w-md">
           Géométrie indisponible — extrusion BD TOPO en fallback. Mesh LiDAR HD

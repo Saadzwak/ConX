@@ -8,9 +8,9 @@ import { IfcPage } from "@/pages/Ifc";
 
 export default function App() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col">
       <Nav />
-      <main className="flex-1 flex flex-col min-h-0">
+      <main className="flex-1 flex flex-col min-h-0 overflow-y-auto">
         <Routes>
           <Route path="/" element={<Navigate to="/strategie" replace />} />
           <Route path="/strategie" element={<StrategiePage />} />

@@ -165,7 +165,9 @@ export function StrategieMap({ bbox, filters, onBuildingClick, onMapMove }: Prop
 
   return (
     <div className="relative h-full w-full">
-      <div ref={containerRef} className="absolute inset-0" />
+      {/* MapLibre force `position: relative` sur .maplibregl-map ; on utilise
+          donc h-full w-full plutôt qu'absolute inset-0 (sinon hauteur = 0). */}
+      <div ref={containerRef} className="h-full w-full" />
       {statusMsg && (
         <div className="absolute bottom-3 left-3 rounded-md bg-card/95 backdrop-blur px-3 py-1.5 text-xs shadow-md border border-border">
           {statusMsg}

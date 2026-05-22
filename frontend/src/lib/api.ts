@@ -46,14 +46,23 @@ export interface BuildingsListResponse {
   bbox: [number, number, number, number] | null;
 }
 
+export interface GeoJsonMultiPolygon {
+  type: "MultiPolygon";
+  coordinates: number[][][][];
+}
+
 export interface BuildingDetail extends BuildingListItem {
   materiau_mur?: string | null;
   periode_construction?: string | null;
   spr?: boolean | null;
   acces_chantier_m?: number | null;
   dpe_kg_co2_m2_an?: number | null;
+  dpe_coefficient_ep_electricite?: number | null;
+  code_commune_insee?: string | null;
+  code_iris?: string | null;
   bdnb_millesime?: string | null;
   thresholds_version?: string | null;
+  geom_geojson?: GeoJsonMultiPolygon | null;
 }
 
 export interface BuildingsListParams {

@@ -1,0 +1,80 @@
+# ConX — Configuration des 3 Managed Agents Anthropic (J10, D-009).
+#
+# IMPORTANT : ce fichier décrit la CONFIG SOUHAITÉE. La synchronisation effective
+# (création/update via API Anthropic) se fait par `python agents/sync.py` une fois
+# que :
+#   1. Les Skills sont uploadées (B-009 + B-010 résolus)
+#   2. La clé ANTHROPIC_API_KEY est en .env
+#   3. Le partenaire a validé la dépense
+#
+# Après upload, les `id` des agents seront persistés ici par le script sync
+# (champ `id:` ajouté pour chaque agent).
+
+beta_header: managed-agents-2026-04-01
+
+agents:
+
+  # ====================================================================
+  # Agent Sélection — Mode Stratégie
+  # ====================================================================
+  - name: conx-selection
+    description: |
+      Narre les résultats du scoring territorial ConX pour un périmètre (bbox, EPCI,
+      filtre typologique). Ne calcule pas — lit l'API backend qui calcule les scores
+      en SQL déterministe (D-006).
+    model: claude-opus-4-7
+    builtin_tools:
+      - agent_toolset_20260401     # bash + file + web_fetch + web_search
+    skills:
+      # À renseigner après upload — voir agents/skills.yaml
+      - name: selection-scoring
+    system_prompt_file: agents/system_prompts/selection.md
+    networking:
+      # En démo : tunnel ngrok pointe vers le backend FastAPI local
+      allowed_hosts:
+        - ${NGROK_PUBLIC_URL_HOST}    # ex: abc123.ngrok-free.app
+
+  # ====================================================================
+  # Agent Plan — Mode Projet
+  # ====================================================================
+  - name: conx-plan
+    description: |
+      Génère un plan de rénovation hors-site biosourcé pour un bâtiment donné,
+      avec bilan carbone déterministe. Chat itératif : à chaque tour utilisateur,
+      régénère le plan COMPLET (jamais un diff). Versionné v1/v2/v3...
+    model: claude-opus-4-7
+    builtin_tools:
+      - agent_toolset_20260401
+    skills:
+      - name: carbon-calc
+      - name: fdes-lookup
+      - name: horssite-biosource
+      - name: re2020-target
+    system_prompt_file: agents/system_prompts/plan.md
+    networking:
+      allowed_hosts:
+        - ${NGROK_PUBLIC_URL_HOST}    # accès lecture fiche bâtiment
+
+  # ====================================================================
+  # Agent Conformité — Validation IFC
+  # ====================================================================
+  - name: conx-conformite
+    description: |
+      Pré-vérifie un fichier IFC uploadé : RE2020 (U fenêtres, R murs, présence
+      IfcSpaces) + PMR (largeur portes, pente rampes). Génère un rapport JSON
+      + PDF. Ne remplace pas un bureau de contrôle.
+    model: claude-opus-4-7
+    builtin_tools:
+      - agent_toolset_20260401
+    # files-api : pas un tool, c'est un beta header (files-api-2025-04-14) déjà dans
+    # default_headers. Capacité upload IFC vient de ce beta, pas d'un tool entry.
+    environment:
+      packages:
+        pip:
+          - ifcopenshell  # test critique 2026-05-22 OK v0.8.5
+    skills:
+      - name: ifc-check
+      - name: re2020-target
+      - name: pmr-checks
+    system_prompt_file: agents/system_prompts/conformite.md
+    # Pas de networking — purement local au container (D-009)

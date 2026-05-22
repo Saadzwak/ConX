@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+.env.*.local
+.vite
+.cache
+.DS_Store
+*.tsbuildinfo
+# Artifacts générés par tsc -b sur la config
+vite.config.d.ts
+vite.config.js

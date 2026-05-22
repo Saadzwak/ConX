@@ -194,3 +194,52 @@ async def test_verify_internal_token_sans_env_raise_503(monkeypatch: pytest.Monk
     with pytest.raises(HTTPException) as exc:
         await verify_internal_token(x_internal_token="anything")
     assert exc.value.status_code == 503
+
+
+# ----------------------------------------------------------------------------
+# Dev bypass (CONX_DEV_BYPASS_AUTH=1) — pour le frontend tant que SUP bloqué.
+# ----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dev_bypass_off_par_defaut_raise_401() -> None:
+    """Sans CONX_DEV_BYPASS_AUTH, pas d'auth = 401 (comportement normal)."""
+    with pytest.raises(HTTPException) as exc:
+        await get_current_user(authorization=None)
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_dev_bypass_on_sans_auth_renvoie_user_fictif(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Avec CONX_DEV_BYPASS_AUTH=1, pas d'auth = user fictif valide (pas 401)."""
+    monkeypatch.setenv("CONX_DEV_BYPASS_AUTH", "1")
+    user = await get_current_user(authorization=None)
+    assert user.user_id == "00000000-0000-0000-0000-000000000dev"
+    assert user.email == "dev@conx.local"
+    assert user.role in {"architecte", "collectivite", "bailleur", "entreprise"}
+
+
+@pytest.mark.asyncio
+async def test_dev_bypass_on_header_malforme_renvoie_user_fictif(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Avec bypass, un header mal formé n'est plus une 401 — on tolère."""
+    monkeypatch.setenv("CONX_DEV_BYPASS_AUTH", "1")
+    user = await get_current_user(authorization="malformé sans bearer")
+    assert user.user_id == "00000000-0000-0000-0000-000000000dev"
+
+
+@pytest.mark.asyncio
+async def test_dev_bypass_on_jwt_valide_pris_quand_meme(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Si un JWT valide est fourni MÊME avec bypass actif, on le décode (pas le fake user)."""
+    monkeypatch.setenv("CONX_DEV_BYPASS_AUTH", "1")
+    now = int(time.time())
+    real_sub = "11111111-2222-3333-4444-555555555555"
+    payload = {"sub": real_sub, "aud": "authenticated", "exp": now + 3600, "iat": now}
+    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+    user = await get_current_user(authorization=f"Bearer {token}")
+    assert user.user_id == real_sub  # pas le fictif

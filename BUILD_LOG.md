@@ -992,3 +992,98 @@ Métriques retenues pour la doc et le pitch jury :
 4. **LiDAR HD download manuel** : action partenaire (4 dalles, ~2-3 Go)
    ou je laisse stub vide et on cale glTF pré-générés en J15 ?
 
+
+---
+
+## 2026-05-22 — Session 13 (J14 Frontend Mode Stratégie + pré-warm VL + dev bypass)
+
+**Durée** : ~2h après le commit Session 12
+**Tokens** : modéré
+**Coût Anthropic** : 0 € (pas d'appel API supplémentaire)
+**Statut** : LIVRÉ
+
+### Livré
+
+**VL — Pré-warmup tiles** (#48) :
+- Refresh des matviews `tiles.buildings_mv` et `tiles.buildings_centroids_mv`
+  (~3.12 M lignes chacune, n'étaient pas peuplées après le restart Docker).
+- Script `scripts/prewarm_vl_tiles.py` : 819 tiles (zoom 14-18, 3 layers
+  buildings_mv + topo_buildings + commune_passoires_heatmap_mv) sur la bbox
+  Vieux-Lille. **2.1 s pour les 819 tiles**, 4393 KB total. Cache martin
+  warmé pour la démo.
+
+**J14 — Frontend Mode Stratégie init** (#50) :
+- `frontend/` scaffoldé : Vite + React 18 + TypeScript + Tailwind +
+  shadcn/ui-style components.
+- Dépendances : @deck.gl/core+layers+mapbox, maplibre-gl, @supabase/supabase-js,
+  @tanstack/react-query, react-router-dom, radix-ui primitives, lucide-react,
+  class-variance-authority + clsx + tailwind-merge.
+- Layout : `Nav` (top) + Routes (Stratégie/Projet/IFC) + `Footer` (sources
+  Etalab obligatoires sur 100 % des pages, cf. CLAUDE.md §4).
+- Page Stratégie complète :
+  - `StrategieMap` : MapLibre base (OSM raster < z11.5, BD Ortho IGN WMTS
+    streaming ≥ z11.5) + deck.gl ScatterplotLayer interleaved, coloré par
+    classe DPE (palette ADEME officielle), taille = score ConX.
+  - `FiltersPanel` (sidebar gauche) : preset "Passoires F-G", classes DPE,
+    type propriétaire, année max construction.
+  - `BuildingDrawer` (sidebar droite, on click) : score header, indicateurs
+    clés, 5 composantes scoring (bars), CTA "Ouvrir Mode Projet".
+  - `SearchBar` (overlay top) : autocomplete adresse via API BAN data.gouv,
+    fly-to map sur sélection (event `conx:flyto`).
+  - Exports CSV/GeoJSON via boutons top-right (lien direct API).
+- Pages `Projet` + `Ifc` : placeholders pour J15-J17.
+- TypeScript strict + typecheck OK. Build production OK (1.87 MB, gzip 532
+  KB — code-splitting déferré à J22 polish).
+
+**Dev bypass auth** (advisor catch) :
+- Backend `auth.py` : nouveau flag env `CONX_DEV_BYPASS_AUTH=1` qui retourne
+  un AuthUser fictif (UUID `00000000-0000-0000-0000-000000000dev`,
+  role=architecte) si aucun JWT n'est fourni. Le bypass est désactivé en
+  prod (env vide ou unset).
+- Tests : 4 nouveaux tests dans `test_auth.py` (bypass off par défaut,
+  bypass on sans auth, header malformé toléré, JWT valide priorise quand
+  même). 23/23 tests passent.
+- Sans ce bypass, le frontend serait inutilisable tant que la migration
+  Supabase (SUP blocker) n'est pas appliquée → carte vide. Avec bypass,
+  `npm run dev` + `docker compose up` = carte fonctionnelle.
+
+**Smoke test end-to-end** :
+- `curl http://localhost:5173/api/buildings?bbox=...&dpe_classes=F&limit=2`
+  → 200 OK, retourne `bdnb-bg-YBXE-3CJL-P99H` (Vieux-Lille, bailleur social
+  F, score 0.91) + `bdnb-bg-NKGA-DUZ2-J28H` (Candidat A copro 1870 F).
+- Proxy Vite /api/* → http://localhost:8000 OK.
+- Dev server Vite démarre en 736 ms.
+
+### Décisions techniques notables
+
+- **Auth dev = bypass env, pas login UI** : choix Option B de l'advisor
+  (vs Option A login Supabase qui nécessite SUP débloqué d'abord). Plus
+  rapide à shipper, gardé gated derrière env var explicite. À retirer
+  quand SUP débloqué (J11 fin).
+- **MapLibre style minimal** : OSM raster pour zoom bas (rapide, sans
+  clé), BD Ortho IGN WMTS pour zoom élevé (impressionnant pour démo VL).
+  Pas de Mapbox/Cesium payants.
+- **deck.gl interleaved=true** : pour que les layers soient rendus DANS
+  MapLibre (pas par-dessus), permettant les effets de profondeur quand
+  on ajoutera l'extrusion 3D des bâtiments en J14.x.
+- **Pas de ESLint pour l'instant** : retiré du package.json. TypeScript
+  strict + tsc suffit pour catch les erreurs structurelles. ESLint à
+  ajouter J22 polish si besoin.
+
+### Bloqueurs ouverts (inchangés)
+- **SUP** (Supabase migration RLS) : toujours bloqué côté partenaire.
+  Dev bypass tient lieu de workaround pour le frontend.
+- **B-004** (hébergement applicatif final) : différé post-concours.
+
+### Prochaine étape
+- J15 — Frontend Mode Projet (viewer Three.js + fiche détaillée).
+- J16 — Chat itératif Agent Plan via SSE.
+- J17 — Frontend IFC drag-and-drop.
+- VL — Refresh matviews scripté (idéalement post-ingestion, pas manuel).
+
+### Questions ouvertes pour le partenaire (mêmes que Session 12)
+1. Bailleur social vs copros pour Vieux-Lille démo ?
+2. Re-run TTL 10 min net (ou 6 min observé suffit) ?
+3. DB password Supabase OU PAT pour SUP migration ?
+4. LiDAR HD download manuel (4 dalles, ~2-3 Go) ?
+

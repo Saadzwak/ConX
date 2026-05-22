@@ -113,14 +113,48 @@ def decode_token(token: str) -> AuthUser:
     return AuthUser(user_id=sub, email=email, role=role, jwt=token)
 
 
+# Constantes pour le bypass dev (cf. get_current_user)
+_DEV_BYPASS_USER_ID = "00000000-0000-0000-0000-000000000dev"
+_DEV_BYPASS_EMAIL = "dev@conx.local"
+
+
+def _dev_bypass_enabled() -> bool:
+    """Vrai si on doit accepter un fake user en dev.
+
+    Activé via `CONX_DEV_BYPASS_AUTH=1`. À ne JAMAIS activer en prod.
+    Utilité : permettre au frontend de fonctionner sans Supabase Auth (utile
+    tant que la migration `app` schema n'est pas appliquée). Cf. BLOCKERS SUP.
+    """
+    return os.environ.get("CONX_DEV_BYPASS_AUTH", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _dev_bypass_user(role: str = "architecte") -> AuthUser:
+    """Construit un AuthUser fictif pour le mode dev bypass."""
+    return AuthUser(
+        user_id=_DEV_BYPASS_USER_ID,
+        email=_DEV_BYPASS_EMAIL,
+        role=role if role in ALLOWED_ROLES else "architecte",
+        jwt="",  # pas de vrai JWT — les routes qui font supabase-py avec jwt
+        # devront tolérer cet état (chemin dev uniquement, RLS désactivée
+        # côté Supabase tant que migration pas appliquée).
+    )
+
+
 async def get_current_user(
     authorization: Annotated[str | None, Header()] = None,
 ) -> AuthUser:
     """Dépendance FastAPI : extrait + valide le JWT depuis le header.
 
     Retourne un `AuthUser`. Lève 401 si absent ou invalide.
+
+    Mode dev bypass : si `CONX_DEV_BYPASS_AUTH=1`, accepte les requêtes sans
+    JWT et retourne un user fictif (UUID `00000000-0000-0000-0000-000000000dev`).
+    À ne JAMAIS activer en prod.
     """
     if not authorization:
+        if _dev_bypass_enabled():
+            logger.debug("Dev bypass auth actif — user fictif retourné.")
+            return _dev_bypass_user()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Header Authorization manquant.",
@@ -128,6 +162,8 @@ async def get_current_user(
         )
     parts = authorization.split(" ", 1)
     if len(parts) != 2 or parts[0].lower() != "bearer":
+        if _dev_bypass_enabled():
+            return _dev_bypass_user()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Header Authorization mal formé (attendu : 'Bearer <jwt>').",

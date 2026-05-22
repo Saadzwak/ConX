@@ -239,7 +239,12 @@ export function PlanChat({ building }: Props) {
           variant="ghost"
           size="sm"
           onClick={() => {
-            setSessionId(`cache:${building.building_id}`);
+            // Pas de setSessionId optimiste — sinon, si le cache 404 (bâtiment
+            // non pré-cachée), sessionId reste collé à "cache:<building_id>"
+            // (pas une vraie session Anthropic) et tout Send subséquent POST
+            // sur /agents/plan/cache:bdnb-bg-.../message → 404. loadFromCache
+            // pose lui-même sessionId = "cache:<vrai sesn_id>" en cas de
+            // succès (cf. ligne ~86).
             setActiveVersion(1);
             void loadFromCache(1);
           }}

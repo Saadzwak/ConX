@@ -300,7 +300,14 @@ export function PlanChat({ building }: Props) {
         status: "streaming",
         started_at: Date.now(),
       };
-      setVersions((vs) => [...vs, nv]);
+      // Dedup : si le backend a engagé le replay fallback (TTL session
+      // expirée), il renvoie version=1 quelle que soit la position dans
+      // l'historique (cf. routers/agents.py:482). Sans filtre on aurait
+      // deux entrées v1 dans `versions` → React duplicate key warning.
+      setVersions((vs) => {
+        const without = vs.filter((v) => v.version !== resp.version);
+        return [...without, nv].sort((a, b) => a.version - b.version);
+      });
       setActiveVersion(resp.version);
       attachStream(resp.session_id, resp.version);
     } catch (e) {

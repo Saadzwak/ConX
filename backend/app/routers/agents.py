@@ -246,7 +246,12 @@ async def _persist_session(
 
 
 async def _next_version(user: AuthUser, session_id: str) -> int:
-    """Retourne la prochaine version (1, 2, 3...) pour cette session."""
+    """[Legacy, conservée pour `start_plan_session`] Retourne la prochaine
+    version (1, 2, 3...) depuis `app.renovation_plans`. NB : actuellement
+    cette table n'est pas peuplée (persistance frontend différée post-J12.5)
+    donc renvoie toujours 1. Pour compter correctement les itérations de
+    chat, utiliser `_count_user_messages` qui inspecte les events Anthropic.
+    """
     if not is_supabase_configured():
         return 1
     sb = supabase_for_user(user)
@@ -262,6 +267,22 @@ async def _next_version(user: AuthUser, session_id: str) -> int:
     if not rows:
         return 1
     return int(rows[0]["version"]) + 1
+
+
+async def _count_user_messages(session_id: str) -> int:
+    """Compte les events `user.message` d'une session Anthropic.
+
+    Source de vérité robuste pour la numérotation de version : chaque
+    `user.message` correspond à une itération de plan (v1 = premier message
+    auto-injecté avec la fiche bâtiment, v2 = premier follow-up, etc.).
+    Plus fiable que `app.renovation_plans` qui n'est pas peuplée.
+    """
+    try:
+        events = await asyncio.to_thread(list_events, session_id, None)
+    except Exception as exc:
+        logger.warning("count_user_messages %s a échoué (%s) — fallback 1", session_id, exc)
+        return 1
+    return sum(1 for e in events if e.get("type") == "user.message")
 
 
 # ---------------------------------------------------------------------------
@@ -477,9 +498,18 @@ async def send_plan_message(
     effective_sid, was_replayed, prev_sid = await _send_with_replay_fallback(
         user, session_id, req.content
     )
-    # Version : si on a replayé, on recommence à v1 sur la nouvelle session.
-    # Sinon on incrémente sur la session courante.
-    next_v = 1 if was_replayed else await _next_version(user, session_id)
+    # Version : compter les user.message events de la session Anthropic.
+    # `_next_version` interrogeait `app.renovation_plans` qui n'est jamais
+    # peuplé (la persistance frontend a été différée post-J12.5) → renvoyait
+    # systématiquement 1, ce qui causait un duplicate React key v1 côté
+    # frontend dès le 2ᵉ message. Compter via Anthropic events est correct
+    # par construction (1 user.message = 1 version logique).
+    # Si on a replayé, on compte sur prev_sid (l'historique métier) en
+    # plus du user.message qu'on vient d'envoyer sur la nouvelle session.
+    if was_replayed and prev_sid is not None:
+        next_v = await _count_user_messages(prev_sid) + 1
+    else:
+        next_v = await _count_user_messages(effective_sid)
 
     # Note : la persistance du plan_json final se fera côté frontend (quand
     # il aura reçu l'agent_message complet via SSE et appelé un endpoint

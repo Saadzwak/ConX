@@ -228,14 +228,27 @@ def retrieve_session(session_id: str) -> dict[str, Any]:
 
 
 def list_events(session_id: str, after: str | None = None) -> list[dict[str, Any]]:
-    """Liste tous les events de la session (filtre après event_id si fourni)."""
+    """Liste les events de la session après un event_id donné.
+
+    Le SDK Anthropic `beta.sessions.events.list` n'accepte PAS `after=<event_id>`
+    (cf. signature : il propose `created_at_gt`, `page`, `order`). On fetch
+    donc l'intégralité de la session (limit=200, order=asc) puis on filtre
+    côté Python : tout ce qui suit chronologiquement l'event `after`. Coût
+    acceptable pour la démo (sessions courtes, polling 1.5 s).
+    """
     client = _get_anthropic_client()
-    kwargs: dict[str, Any] = {"session_id": session_id, "limit": 200}
-    if after:
-        kwargs["after"] = after
-    events_iter = client.beta.sessions.events.list(**kwargs)
+    events_iter = client.beta.sessions.events.list(
+        session_id=session_id,
+        limit=200,
+        order="asc",
+    )
+    seen_after = after is None
     out: list[dict[str, Any]] = []
     for e in getattr(events_iter, "data", events_iter):
+        if not seen_after:
+            if getattr(e, "id", None) == after:
+                seen_after = True
+            continue
         out.append(_event_to_dict(e))
     return out
 

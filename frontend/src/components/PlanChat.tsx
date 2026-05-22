@@ -12,6 +12,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Sparkles, Send, Loader2, AlertCircle, History, Database } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +25,75 @@ import {
   startPlanSession,
   type BuildingDetail,
 } from "@/lib/api";
+
+/**
+ * Composants markdown stylés via Tailwind utilitaires (pas de plugin
+ * @tailwindcss/typography pour limiter les deps). Tableaux GFM activés
+ * via remark-gfm pour le bilan carbone + budget.
+ */
+const MD_COMPONENTS = {
+  h1: (p: { children?: React.ReactNode }) => (
+    <h1 className="text-base font-bold mt-3 mb-1.5">{p.children}</h1>
+  ),
+  h2: (p: { children?: React.ReactNode }) => (
+    <h2 className="text-sm font-bold mt-3 mb-1.5 text-foreground">{p.children}</h2>
+  ),
+  h3: (p: { children?: React.ReactNode }) => (
+    <h3 className="text-sm font-semibold mt-2.5 mb-1 text-foreground">{p.children}</h3>
+  ),
+  h4: (p: { children?: React.ReactNode }) => (
+    <h4 className="text-xs font-semibold mt-2 mb-1 text-foreground uppercase tracking-wide">
+      {p.children}
+    </h4>
+  ),
+  p: (p: { children?: React.ReactNode }) => (
+    <p className="my-1.5 leading-relaxed">{p.children}</p>
+  ),
+  ul: (p: { children?: React.ReactNode }) => (
+    <ul className="list-disc pl-5 my-1.5 space-y-0.5">{p.children}</ul>
+  ),
+  ol: (p: { children?: React.ReactNode }) => (
+    <ol className="list-decimal pl-5 my-1.5 space-y-0.5">{p.children}</ol>
+  ),
+  li: (p: { children?: React.ReactNode }) => <li className="leading-snug">{p.children}</li>,
+  strong: (p: { children?: React.ReactNode }) => (
+    <strong className="font-semibold text-foreground">{p.children}</strong>
+  ),
+  em: (p: { children?: React.ReactNode }) => <em className="italic">{p.children}</em>,
+  code: (p: { children?: React.ReactNode }) => (
+    <code className="bg-muted px-1 py-0.5 rounded text-[11px] font-mono">{p.children}</code>
+  ),
+  blockquote: (p: { children?: React.ReactNode }) => (
+    <blockquote className="border-l-2 border-primary/40 pl-3 my-2 italic text-foreground/80">
+      {p.children}
+    </blockquote>
+  ),
+  hr: () => <hr className="my-3 border-border" />,
+  table: (p: { children?: React.ReactNode }) => (
+    <div className="my-2 overflow-x-auto">
+      <table className="text-[11.5px] border-collapse w-full">{p.children}</table>
+    </div>
+  ),
+  thead: (p: { children?: React.ReactNode }) => (
+    <thead className="bg-muted/60">{p.children}</thead>
+  ),
+  th: (p: { children?: React.ReactNode }) => (
+    <th className="border border-border px-2 py-1 text-left font-semibold">{p.children}</th>
+  ),
+  td: (p: { children?: React.ReactNode }) => (
+    <td className="border border-border px-2 py-1 align-top">{p.children}</td>
+  ),
+  a: (p: { children?: React.ReactNode; href?: string }) => (
+    <a
+      href={p.href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="text-primary underline underline-offset-2 hover:text-primary/80"
+    >
+      {p.children}
+    </a>
+  ),
+};
 
 const SLOW_PLAN_THRESHOLD_MS = 90_000; // 90 s — bouton "Use cache" apparaît
 
@@ -197,6 +268,24 @@ export function PlanChat({ building }: Props) {
     setDraft("");
     setError(null);
     setBusy(true);
+
+    // Mode cache (sessionId préfixé "cache:") : pas de vraie session Anthropic
+    // côté serveur, donc on ne peut pas POST /agents/plan/<sid>/message. On
+    // tente de charger la version suivante depuis le cache local (pour la
+    // démo : Wazemmes v2 chanvre est pré-caché). Si absent → message clair.
+    if (sessionId.startsWith("cache:")) {
+      const nextVersion = (activeVersion ?? 1) + 1;
+      const ok = await loadFromCache(nextVersion);
+      if (!ok) {
+        setError(
+          `Plan v${nextVersion} non disponible en cache. Pour itérer en live, ` +
+            `recliquez "Générer un plan rénovation IA".`,
+        );
+      }
+      setBusy(false);
+      return;
+    }
+
     try {
       const resp = await sendPlanMessage(sessionId, content);
       // Si le backend a engagé le fallback replay, on update sessionId
@@ -218,7 +307,7 @@ export function PlanChat({ building }: Props) {
       setError((e as Error).message);
       setBusy(false);
     }
-  }, [sessionId, draft, busy, attachStream]);
+  }, [sessionId, draft, busy, attachStream, activeVersion, loadFromCache]);
 
   // === Render ===
   const active = versions.find((v) => v.version === activeVersion);
@@ -318,15 +407,19 @@ export function PlanChat({ building }: Props) {
         </div>
       )}
 
-      {/* Active version content */}
-      <div className="flex-1 overflow-y-auto p-3 text-sm font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap">
+      {/* Active version content — rendu markdown (GFM tables, listes, etc.) */}
+      <div className="flex-1 overflow-y-auto p-3 text-[12.5px] leading-relaxed">
         {active?.user_message && (
-          <div className="mb-3 pb-3 border-b text-foreground/80 font-sans text-xs">
+          <div className="mb-3 pb-3 border-b text-foreground/80 text-xs">
             <strong className="text-foreground">Vous :</strong> {active.user_message}
           </div>
         )}
         {active?.agent_text ? (
-          <div>{active.agent_text}</div>
+          <div className="space-y-1">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+              {active.agent_text}
+            </ReactMarkdown>
+          </div>
         ) : (
           <div className="text-muted-foreground italic">
             {active?.status === "streaming"

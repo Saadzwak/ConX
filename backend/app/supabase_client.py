@@ -84,6 +84,13 @@ def supabase_for_user(user: AuthUser) -> Client:
             detail=f"Module supabase non installé : {exc}",
         ) from exc
 
+    # En mode dev-bypass (CONX_DEV_BYPASS_AUTH), l'AuthUser n'a pas de JWT —
+    # on bascule sur le service_role pour permettre l'écriture côté Supabase.
+    # ⚠ Bypass la RLS ; à activer uniquement en dev. Cf. auth.py.
+    if not user.jwt:
+        sr_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        if sr_key:
+            return create_client(_supabase_url(), sr_key)
     client = create_client(_supabase_url(), _supabase_anon_key())
     # Propager le JWT pour que PostgREST applique la RLS
     client.postgrest.auth(user.jwt)

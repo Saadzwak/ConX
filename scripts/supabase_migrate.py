@@ -1,45 +1,48 @@
-"""ConX — applique les migrations Supabase Cloud via le SDK supabase-py.
+"""ConX — applique les migrations Supabase Cloud via la Management API.
 
-Lit `scripts/sql/supabase/*.sql` dans l'ordre alphabétique, les exécute via
-PostgREST (rpc `exec_sql` si dispo) ou via une connexion directe au pooler
-PostgreSQL (`postgresql://postgres.<ref>:<service_role_jwt_b64>@aws-...`).
+Utilise un Personal Access Token (PAT) côté `SUPABASE_ACCESS_TOKEN` et le
+project ref côté `SUPABASE_PROJECT_REF`. Appelle l'endpoint :
 
-Pour le free tier Supabase, le pooler PgBouncer est exposé sur le port 6543
-(transaction mode). Le SDK supabase-py ne sait PAS exécuter du SQL arbitraire
-(c'est intentionnel — PostgREST ne fait que CRUD via Postgres roles). On
-passe donc par `psycopg` direct.
+    POST https://api.supabase.com/v1/projects/<ref>/database/query
+    Authorization: Bearer <PAT>
+    {"query": "...SQL..."}
+
+Le DDL n'est PAS exposé via PostgREST (anon/service_role) — c'est la voie
+officielle pour appliquer des migrations sans avoir le mot de passe DB.
+
+Fallback : si `SUPABASE_ACCESS_TOKEN` absent, tente une connexion psycopg
+directe via `SUPABASE_DB_PASSWORD`.
 
 Usage :
-    python scripts/supabase_migrate.py          # applique toutes les migrations
-    python scripts/supabase_migrate.py --check  # vérifie connectivité seulement
+    python scripts/supabase_migrate.py                          # applique tout
+    python scripts/supabase_migrate.py --check                  # SELECT 1
     python scripts/supabase_migrate.py --file scripts/sql/supabase/001_app_schema.sql
 
-⚠ COÛT : 0 € (Supabase free tier, opérations SQL gratuites).
-⚠ SÉCURITÉ : utilise `SUPABASE_SERVICE_ROLE_KEY` (bypass RLS) — NE JAMAIS
-le commit. Lecture depuis `.env`.
+⚠ COÛT : 0 € (Supabase free tier).
+⚠ SÉCURITÉ : le PAT est l'équivalent d'un mot de passe admin Supabase —
+JAMAIS commit. Lecture depuis `.env`.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG_DIR = ROOT / "scripts" / "sql" / "supabase"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] %(levelname)s %(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
 logger = logging.getLogger("supabase_migrate")
+
+MGMT_API_BASE = "https://api.supabase.com"
 
 
 def _load_env() -> None:
-    """Charge .env à la main (sans dépendre de python-dotenv)."""
     env_path = ROOT / ".env"
     if not env_path.exists():
         return
@@ -47,146 +50,147 @@ def _load_env() -> None:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.split("#", 1)[0].strip()
-        if key:
-            os.environ[key] = value
+        k, _, v = line.partition("=")
+        os.environ[k.strip()] = v.split("#", 1)[0].strip()
 
 
-def _supabase_db_dsn() -> str:
-    """Construit le DSN PostgreSQL direct (pooler Supabase).
-
-    Le project ref est extrait de SUPABASE_URL = https://<ref>.supabase.co.
-    Le password est SUPABASE_DB_PASSWORD (à mettre en .env si on a besoin du
-    pooler) — pour les migrations, on préfère l'API REST. Mais pour exécuter
-    du DDL, on doit passer par une connexion Postgres.
-
-    On utilise le service_role JWT comme mot de passe ? NON — c'est pas le
-    pattern. Le pooler accepte le mdp de la DB (créé au project setup).
-
-    Pour le hackathon, on demande au partenaire le mot de passe DB. Sinon
-    fallback : exécuter le SQL manuellement dans le SQL editor (ce que le
-    partenaire voulait ÉVITER, mais c'est l'option de repli).
-    """
+def _project_ref() -> str:
+    """Récupère le project ref depuis env ou URL Supabase."""
+    ref = os.environ.get("SUPABASE_PROJECT_REF", "").strip()
+    if ref:
+        return ref
     url = os.environ.get("SUPABASE_URL", "").strip()
+    if url:
+        # https://<ref>.supabase.co
+        host = url.replace("https://", "").replace("http://", "").rstrip("/")
+        return host.split(".")[0]
+    return ""
+
+
+def _exec_sql_via_pat(sql: str) -> tuple[bool, Any]:
+    """Exécute du SQL via Supabase Management API.
+
+    Retourne (success, payload). Le payload est soit la liste de rows
+    (`[{...}, ...]`), soit le message d'erreur.
+    """
+    import urllib.error
+    import urllib.request
+
+    pat = os.environ.get("SUPABASE_ACCESS_TOKEN", "").strip()
+    ref = _project_ref()
+    if not pat or not ref:
+        return False, "SUPABASE_ACCESS_TOKEN ou SUPABASE_PROJECT_REF absent"
+    url = f"{MGMT_API_BASE}/v1/projects/{ref}/database/query"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"query": sql}).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {pat}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # Supabase Management API derrière Cloudflare bloque les UA Python
+            # par défaut (erreur 1010). On déguise en client moderne.
+            "User-Agent": "conx-migrate/0.1 (+https://github.com/anthropics/conx)",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            try:
+                return True, json.loads(body)
+            except json.JSONDecodeError:
+                return True, body
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        return False, f"HTTP {exc.code}: {body[:1000]}"
+    except urllib.error.URLError as exc:
+        return False, f"URLError: {exc}"
+
+
+def _exec_sql_via_psycopg(sql: str) -> tuple[bool, Any]:
+    """Fallback : connexion psycopg directe via SUPABASE_DB_PASSWORD."""
     pw = os.environ.get("SUPABASE_DB_PASSWORD", "").strip()
-    if not url or not pw:
-        return ""
-    parsed = urlparse(url)
-    host = parsed.hostname or ""
-    # ref = first sub-domain (ex: kvevcricmqijfixsrdpa)
-    ref = host.split(".")[0] if host else ""
-    if not ref:
-        return ""
-    # Pooler PgBouncer (transaction mode, port 6543)
-    # Format : postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:6543/postgres
-    # Région inconnue sans appel API — fallback au connection direct port 5432 :
-    # postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres
-    return f"postgresql://postgres:{pw}@db.{ref}.supabase.co:5432/postgres"
-
-
-def _exec_sql_via_psycopg(dsn: str, sql: str) -> None:
-    """Exécute du SQL multi-statement via psycopg."""
+    ref = _project_ref()
+    if not pw or not ref:
+        return False, "SUPABASE_DB_PASSWORD ou ref absent"
     try:
         import psycopg
-    except ImportError as exc:
-        raise RuntimeError(
-            "psycopg non installé. `pip install 'psycopg[binary]'`"
-        ) from exc
-    with psycopg.connect(dsn, autocommit=True) as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql)
-
-
-def _exec_sql_via_rest(sql: str) -> bool:
-    """Tente d'exécuter du SQL via l'endpoint Supabase HTTP `pg/exec_sql`
-    (extension Supabase, doit être créée manuellement par le partenaire).
-
-    Retourne True si succès, False si l'endpoint n'existe pas.
-    """
-    try:
-        import httpx
     except ImportError:
-        return False
+        return False, "psycopg non installé (pip install 'psycopg[binary]')"
+    dsn = f"postgresql://postgres:{pw}@db.{ref}.supabase.co:5432/postgres"
+    try:
+        with psycopg.connect(dsn, autocommit=True, connect_timeout=15) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+        return True, "OK (psycopg)"
+    except Exception as exc:  # pragma: no cover
+        return False, f"psycopg error: {exc}"
 
-    url = os.environ.get("SUPABASE_URL", "").strip()
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    if not url or not service_key:
-        return False
 
-    # Tentative : la fonction RPC publique exec_sql (à créer côté Supabase)
-    # n'existe pas par défaut, et c'est intentionnel. On la skip.
-    return False
+def apply_sql(sql: str, label: str) -> None:
+    """Applique du SQL via PAT API, fallback psycopg si PAT absent."""
+    logger.info("Apply : %s (%d chars)", label, len(sql))
+    ok, payload = _exec_sql_via_pat(sql)
+    voie = "Management API (PAT)"
+    if not ok and "absent" in str(payload):
+        logger.warning("PAT absent → fallback psycopg.")
+        ok, payload = _exec_sql_via_psycopg(sql)
+        voie = "psycopg (DB password)"
+
+    if not ok:
+        logger.error("❌ Echec via %s : %s", voie, str(payload)[:500])
+        raise SystemExit(2)
+
+    # Affiche un résumé du payload (success cases)
+    if isinstance(payload, list):
+        logger.info("  ✅ %s : %d rows retournées.", voie, len(payload))
+        if payload:
+            logger.info("    sample : %s", str(payload[0])[:200])
+    else:
+        logger.info("  ✅ %s : %s", voie, str(payload)[:200])
 
 
 def apply_file(path: Path) -> None:
-    """Applique une migration SQL via la voie disponible."""
     logger.info("Migration : %s (%d bytes)", path.name, path.stat().st_size)
-    sql = path.read_text(encoding="utf-8")
-
-    dsn = _supabase_db_dsn()
-    if dsn:
-        try:
-            _exec_sql_via_psycopg(dsn, sql)
-            logger.info("  → OK via psycopg (connexion directe DB).")
-            return
-        except Exception as exc:
-            logger.warning("Connexion DB directe échouée : %s", exc)
-
-    # Fallback : on imprime la procédure manuelle.
-    logger.error(
-        "❌ Aucune voie automatique disponible. "
-        "Voici la procédure manuelle :\n"
-        "  1. Ouvrir https://supabase.com/dashboard/project/<ref>/sql/new\n"
-        "  2. Copier-coller le contenu de %s\n"
-        "  3. Cliquer Run",
-        path,
-    )
-    raise SystemExit(2)
+    apply_sql(path.read_text(encoding="utf-8"), path.name)
 
 
 def main() -> int:
     _load_env()
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true", help="Connectivité uniquement")
-    parser.add_argument("--file", type=Path, help="Une migration spécifique")
+    parser.add_argument("--check", action="store_true", help="SELECT 1 connectivity check")
+    parser.add_argument("--file", type=Path, help="Apply a specific migration file")
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="Liste les schemas/tables actuellement présents",
+    )
     args = parser.parse_args()
 
-    url = os.environ.get("SUPABASE_URL", "").strip()
-    if not url or url.startswith("https://YOUR_"):
-        logger.error("SUPABASE_URL non défini ou placeholder dans .env.")
+    ref = _project_ref()
+    if not ref or ref.startswith("YOUR_"):
+        logger.error("SUPABASE_PROJECT_REF ou SUPABASE_URL invalide dans .env.")
         return 3
-    logger.info("SUPABASE_URL = %s", url)
+    logger.info("Project ref : %s", ref)
 
-    pw = os.environ.get("SUPABASE_DB_PASSWORD", "").strip()
-    if not pw:
-        logger.warning(
-            "SUPABASE_DB_PASSWORD absent → tentative via REST fallback. "
-            "Si ça échoue, mettre le mot de passe DB en .env et relancer."
-        )
+    pat = os.environ.get("SUPABASE_ACCESS_TOKEN", "").strip()
+    if pat:
+        logger.info("Auth : Management API PAT (commence par %s…)", pat[:8])
+    else:
+        logger.warning("SUPABASE_ACCESS_TOKEN absent — fallback psycopg uniquement.")
 
     if args.check:
-        # Test minimal : SELECT 1
-        dsn = _supabase_db_dsn()
-        if not dsn:
-            logger.error("DSN non constructible (manque mot de passe DB).")
-            return 4
-        try:
-            import psycopg
-            with psycopg.connect(dsn, autocommit=True, connect_timeout=10) as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT 1, current_database(), current_user;")
-                    one, db, usr = cur.fetchone()
-                    logger.info(
-                        "✅ Connexion OK : SELECT 1 = %s, db = %s, user = %s",
-                        one, db, usr,
-                    )
-            return 0
-        except Exception as exc:
-            logger.error("❌ Connexion DB échouée : %s", exc)
-            return 5
+        apply_sql("SELECT 1 AS one, current_database() AS db, current_user AS usr;", "check")
+        return 0
+
+    if args.list:
+        apply_sql(
+            "SELECT schemaname, tablename FROM pg_tables "
+            "WHERE schemaname IN ('app','public') ORDER BY 1,2;",
+            "list",
+        )
+        return 0
 
     if args.file:
         apply_file(args.file)
@@ -194,11 +198,10 @@ def main() -> int:
 
     files = sorted(MIG_DIR.glob("*.sql"))
     if not files:
-        logger.error("Aucune migration trouvée dans %s", MIG_DIR)
+        logger.error("Aucune migration dans %s", MIG_DIR)
         return 6
     for f in files:
         apply_file(f)
-    logger.info("✅ Toutes les migrations appliquées (%d fichiers).", len(files))
     return 0
 
 

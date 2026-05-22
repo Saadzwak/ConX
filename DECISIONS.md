@@ -661,3 +661,71 @@ Trois choix possibles à ce stade :
 3. **Tenter v4** avec poids manuels plus agressifs (par ex. `{F:3,G:5}`) avant de figer le choix.
 
 Tous les modèles sont sur disque ; le code de prédiction massive est paramétrable par chemin du `.pkl`.
+
+
+## D-022 — Choix des bâtiments vedettes démo : Vieux-Lille (copros) + Wazemmes (bailleur social)
+
+**Date** : 2026-05-22
+**Statut** : DÉCIDÉ par le partenaire
+
+### Contexte
+Le pitch de 5 min nécessite un atterrissage final sur un bâtiment précis pour générer un plan rénovation IA en direct. Deux questions ouvertes :
+1. Lequel des 3 candidats Vieux-Lille (cf. `docs/VIEUX_LILLE_ANALYSE.md`) choisir comme vedette principale ?
+2. Quel quartier de fallback prévoir si Vieux-Lille pose un problème global le jour J ?
+
+### Décision
+
+**Quartier vedette principal** : Vieux-Lille (Lille, 59).
+**Bâtiment vedette principal** : `bdnb-bg-JBP7-PFQL-4T69` (RNB `1JZ6GKJCV1ZS`) — candidat B
+- R+3, 1930, copro privée, DPE **G** (540 kWh ep/m²/an, certifié ADEME)
+- 233 m² · 17 logements (densité élevée)
+- Score ConX **91.1/100**
+- **714 tCO₂ évitées sur 30 ans (record du quartier VL)**
+- Coût estimé 140 k€
+- Pas MH, pas SPR
+
+**Narratif Vieux-Lille** : "Passoires urbaines fragmentées en copropriété privée, l'angle mort de la rénovation française. La densité (17 logements) donne un effet de levier carbone exceptionnel pour une seule opération."
+
+**Quartier vedette fallback** : Wazemmes (Lille, 59), bbox WGS84 `(3.040, 50.620) — (3.070, 50.636)`.
+**Bâtiment vedette fallback** : `bdnb-bg-81UB-UTZE-ZP7F` (RNB `2D9YFEZTSAC9`)
+- R+3 (hauteur 11 m), 1978, **bailleur social** (vs copros à VL)
+- Résidentiel collectif, DPE **F** (324 kWh ep/m²/an, certifié ADEME)
+- 1084 m² · **48 logements** (~3× la densité de VL)
+- Mur béton (cohérent années 70)
+- Score ConX **96.1/100** (top score Wazemmes)
+- **1 727 tCO₂ évitées sur 30 ans (record absolu)**
+- Coût estimé 650 k€
+- Pas MH, pas SPR
+- IRIS 593500402, centroïde (3.0467, 50.6243)
+
+**Narratif Wazemmes** : "Patrimoine bailleur social des années 70, dense et homogène. Une rénovation hors-site biosourcée à l'échelle de l'immeuble = bilan carbone considérable et reproductible sur l'ensemble du parc."
+
+**Pourquoi les 2 sont à Lille (et pas l'un à Lille + l'autre à Lens centre)** : terrain connu du partenaire pour sécuriser la démo. Le partenaire peut citer des contacts (bailleurs, AMO, BE) à 10 km de l'écran si le jury creuse. Lens centre reste un 3ᵉ fallback (narratif post-minier) mais sans pré-cache MVT/LiDAR — à activer manuellement si Lille pose un problème global.
+
+### Critères d'inclusion validés
+
+Pour Wazemmes (le brief le plus exigeant) :
+- ✅ Logement collectif R+2 à R+4 (R+3 ici)
+- ✅ Bailleur social (priorité satisfaite)
+- ✅ DPE F ou G **réel** ADEME (F)
+- ✅ Année avant 1980 (1978)
+- ✅ Score ConX > 85 (96.1)
+- ✅ Pas patrimoine (MH=false, SPR=false)
+- ⚠ Accès chantier ≥ 4 m : colonne `acces_chantier_m` non présente dans `public_data.buildings` (validé pour VL : tous à 4.0 m car contrainte urbaine homogène). À considérer comme satisfait par défaut pour Wazemmes (rues plus larges qu'au Vieux-Lille).
+
+Pour Vieux-Lille, **aucun bailleur social** ne match les critères stricts (F/G + ADEME + pré-1948) dans la bbox — d'où le repli sur copros privées documenté `VIEUX_LILLE_ANALYSE.md` §3.
+
+### Conséquences sur le plan
+
+- **Pré-calcul plans IA** : v1 + v2 ("plutôt chanvre") sur VL candidat B + v1 sur Wazemmes vedette → cache local + Supabase. Coût ~2 € Anthropic.
+- **Pré-warmup MVT** : Vieux-Lille déjà chaud (cf. `scripts/prewarm_vl_tiles.py`). Wazemmes à warmer post-merge (~2 s).
+- **LiDAR HD** : 2 bâtiments à mesh-er (VL candidat B + Wazemmes vedette). Dalles IGN différentes par quartier.
+- **Script démo `docs/DEMO_SCRIPT.md`** : Vieux-Lille en chemin nominal, Wazemmes en plan B au tour 2 ("Pour le narratif logement social, on regarde un autre exemple — Wazemmes"), Lens en plan C global.
+
+### Liste démo finale (référence unique)
+
+| Rôle | Quartier | Bâtiment | ID | Score | tCO₂ | Propriétaire | DPE |
+|---|---|---|---|---|---|---|---|
+| Vedette PRINCIPAL | Vieux-Lille | Candidat B | `bdnb-bg-JBP7-PFQL-4T69` | 91.1 | 714 | Copro privée | G |
+| Vedette FALLBACK | Wazemmes | top-1 | `bdnb-bg-81UB-UTZE-ZP7F` | 96.1 | 1727 | Bailleur social | F |
+| Quartier PLAN C | Lens centre | (à identifier J22) | — | — | — | — | — |

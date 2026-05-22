@@ -37,9 +37,27 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("conx.agents")
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-LOCK_YAML = ROOT / "agents" / "agents.lock.yaml"
-AGENTS_YAML = ROOT / "agents" / "agents.yaml"
+def _resolve_agents_dir() -> Path:
+    """Trouve le répertoire `agents/` quel que soit le layout (dev local ou
+    container Docker où `/app/agents` est monté en read-only)."""
+    # 1. Container Docker : /app/agents (monté via docker-compose).
+    candidate_docker = Path("/app/agents")
+    if (candidate_docker / "agents.lock.yaml").exists() or candidate_docker.is_dir():
+        return candidate_docker
+    # 2. Dev local : remonter depuis __file__ (.../backend/app/agents_client.py
+    #    → .../agents/agents.lock.yaml).
+    here = Path(__file__).resolve()
+    for parent in (here.parent.parent.parent, here.parent.parent, here.parent.parent.parent.parent):
+        candidate = parent / "agents"
+        if (candidate / "agents.lock.yaml").exists() or candidate.is_dir():
+            return candidate
+    # 3. Fallback : on retourne le chemin attendu en dev (qui peut ne pas exister)
+    return here.parent.parent.parent / "agents"
+
+
+_AGENTS_DIR = _resolve_agents_dir()
+LOCK_YAML = _AGENTS_DIR / "agents.lock.yaml"
+AGENTS_YAML = _AGENTS_DIR / "agents.yaml"
 
 # Beta headers (cf. agents/agents.yaml + docs/AGENTS.md)
 BETA_HEADER = "managed-agents-2026-04-01,skills-2025-10-02,files-api-2025-04-14,code-execution-2025-08-25"
@@ -115,19 +133,61 @@ def _get_anthropic_client() -> Anthropic:
 # ---------------------------------------------------------------------------
 
 
-def create_session(agent_name: str) -> dict[str, Any]:
+def _load_env_ids() -> dict[str, str]:
+    """Lit agents.lock.yaml et retourne le mapping {agent_name → env_id}."""
+    if not LOCK_YAML.exists():
+        return {}
+    lock = yaml.safe_load(LOCK_YAML.read_text(encoding="utf-8")) or {}
+    agent_env = lock.get("agent_env") or {}
+    envs = lock.get("environments") or {}
+    out: dict[str, str] = {}
+    if isinstance(agent_env, dict) and isinstance(envs, dict):
+        for agent_name, env_name in agent_env.items():
+            env_id = envs.get(env_name)
+            if env_id:
+                out[agent_name] = env_id
+    return out
+
+
+def get_environment_id(agent_name: str) -> str:
+    """Résout l'env_id Anthropic à utiliser pour cet agent (lié à la session)."""
+    env_ids = _load_env_ids()
+    if agent_name in env_ids:
+        return env_ids[agent_name]
+    # Fallback : env_default_id depuis l'env (legacy ou récupération directe)
+    fallback = os.environ.get("ENV_DEFAULT_ID", "").strip()
+    if fallback:
+        return fallback
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=f"Env Anthropic introuvable pour {agent_name!r} dans agents.lock.yaml.",
+    )
+
+
+def create_session(agent_name: str, title: str | None = None) -> dict[str, Any]:
     """Crée une session sur l'agent et retourne {session_id, status, agent_id}.
 
     Coût : 0 € (la session est facturée à l'envoi de messages, pas à sa création).
+
+    Note : l'API beta managed-agents-2026-04-01 bind l'env_id à la SESSION
+    (pas à l'agent — découverte SDK J10).
     """
     client = _get_anthropic_client()
     agent_id = get_agent_id(agent_name)
-    logger.info("Création session sur agent %s (id=%s)...", agent_name, agent_id)
-    session = client.beta.agents.sessions.create(agent_id=agent_id)
+    env_id = get_environment_id(agent_name)
+    logger.info(
+        "Création session sur agent %s (id=%s) + env %s...", agent_name, agent_id, env_id,
+    )
+    session = client.beta.sessions.create(
+        agent=agent_id,
+        environment_id=env_id,
+        title=title or f"ConX {agent_name} session",
+    )
     return {
         "session_id": session.id,
         "status": getattr(session, "status", "unknown"),
         "agent_id": agent_id,
+        "env_id": env_id,
         "agent_name": agent_name,
     }
 
@@ -135,26 +195,32 @@ def create_session(agent_name: str) -> dict[str, Any]:
 def send_user_message(session_id: str, content: str) -> dict[str, Any]:
     """Envoie un user_message sur la session. Retour : {event_id, type}.
 
-    L'agent traite ensuite asynchroniquement — il faut écouter le stream
-    `events.list/stream` (cf. stream_events()) pour récupérer la réponse.
+    Format event : `{"type":"user.message", "content":[{"type":"text","text":...}]}`
+    (validé par test_ttl.py).
     """
     client = _get_anthropic_client()
     logger.info("Send user message à session %s (%d chars)...", session_id, len(content))
-    event = client.beta.agents.sessions.events.create(
+    resp = client.beta.sessions.events.send(
         session_id=session_id,
-        type="user_message",
-        content=content,
+        events=[
+            {
+                "type": "user.message",
+                "content": [{"type": "text", "text": content}],
+            }
+        ],
     )
-    return {
-        "event_id": getattr(event, "id", None),
-        "type": getattr(event, "type", "user_message"),
-    }
+    # La réponse contient une liste d'events créés ; on renvoie le 1er.
+    events = getattr(resp, "events", None) or getattr(resp, "data", None) or []
+    if events:
+        e = events[0]
+        return {"event_id": getattr(e, "id", None), "type": getattr(e, "type", "user.message")}
+    return {"event_id": None, "type": "user.message"}
 
 
 def retrieve_session(session_id: str) -> dict[str, Any]:
-    """Status d'une session (idle / working / terminated / error)."""
+    """Status d'une session (idle / running / terminated / error)."""
     client = _get_anthropic_client()
-    session = client.beta.agents.sessions.retrieve(session_id=session_id)
+    session = client.beta.sessions.retrieve(session_id=session_id)
     return {
         "session_id": session.id,
         "status": getattr(session, "status", "unknown"),
@@ -164,27 +230,54 @@ def retrieve_session(session_id: str) -> dict[str, Any]:
 def list_events(session_id: str, after: str | None = None) -> list[dict[str, Any]]:
     """Liste tous les events de la session (filtre après event_id si fourni)."""
     client = _get_anthropic_client()
-    kwargs: dict[str, Any] = {"session_id": session_id}
+    kwargs: dict[str, Any] = {"session_id": session_id, "limit": 200}
     if after:
         kwargs["after"] = after
-    events = client.beta.agents.sessions.events.list(**kwargs)
+    events_iter = client.beta.sessions.events.list(**kwargs)
     out: list[dict[str, Any]] = []
-    for e in events:
+    for e in getattr(events_iter, "data", events_iter):
         out.append(_event_to_dict(e))
     return out
 
 
 def _event_to_dict(e: Any) -> dict[str, Any]:
-    """Convertit un event SDK en dict JSON-sérialisable pour le SSE."""
+    """Convertit un event SDK en dict JSON-sérialisable pour le SSE.
+
+    L'API beta utilise `processed_at` (pas `created_at`). On expose les deux
+    pour rester compatible côté frontend.
+    """
+    ts = (
+        getattr(e, "processed_at", None)
+        or getattr(e, "created_at", None)
+    )
     return {
         "id": getattr(e, "id", None),
         "type": getattr(e, "type", None),
         "role": getattr(e, "role", None),
-        "content": getattr(e, "content", None),
-        "created_at": (
-            e.created_at.isoformat() if hasattr(e, "created_at") and e.created_at else None
-        ),
+        "content": _serialize_content(getattr(e, "content", None)),
+        "created_at": ts.isoformat() if ts and hasattr(ts, "isoformat") else (str(ts) if ts else None),
+        "processed_at": ts.isoformat() if ts and hasattr(ts, "isoformat") else (str(ts) if ts else None),
     }
+
+
+def _serialize_content(content: Any) -> Any:
+    """Sérialise content (peut être list[ContentBlock] avec attrs ou dict)."""
+    if content is None:
+        return None
+    if isinstance(content, list):
+        out = []
+        for block in content:
+            if isinstance(block, dict):
+                out.append(block)
+            else:
+                # SDK Pydantic block → dict
+                d = {"type": getattr(block, "type", None)}
+                text = getattr(block, "text", None)
+                if text is not None:
+                    d["text"] = text
+                out.append(d)
+        return out
+    return content
 
 
 # ---------------------------------------------------------------------------

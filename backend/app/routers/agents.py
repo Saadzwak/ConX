@@ -89,6 +89,12 @@ class PlanMessageResponse(BaseModel):
     session_id: str
     version: int  # version du plan que ce message va produire
     cost_estimate_eur: tuple[float, float] = (0.2, 0.5)
+    # Si la session Anthropic était `terminated` (TTL), on en a créé une
+    # nouvelle et rejoué le dernier plan en contexte. `was_replayed=True`
+    # signale au frontend qu'il doit basculer son state vers `session_id`
+    # (le nouveau).
+    was_replayed: bool = False
+    previous_session_id: str | None = None
 
 
 class PlanVersion(BaseModel):
@@ -228,7 +234,7 @@ async def _persist_session(
         )
         return
     sb = supabase_for_user(user)
-    sb.table("agent_sessions").insert(
+    sb.schema("app").table("agent_sessions").insert(
         {
             "session_id": session_info["session_id"],
             "agent_name": session_info["agent_name"],
@@ -245,7 +251,7 @@ async def _next_version(user: AuthUser, session_id: str) -> int:
         return 1
     sb = supabase_for_user(user)
     res = (
-        sb.table("renovation_plans")
+        sb.schema("app").table("renovation_plans")
         .select("version")
         .eq("session_id", session_id)
         .order("version", desc=True)
@@ -256,6 +262,141 @@ async def _next_version(user: AuthUser, session_id: str) -> int:
     if not rows:
         return 1
     return int(rows[0]["version"]) + 1
+
+
+# ---------------------------------------------------------------------------
+# Fallback "replay-previous-plan" (B-001 long-idle)
+# ---------------------------------------------------------------------------
+
+
+def _build_replay_prompt(previous_plan_json: dict[str, Any], new_user_message: str) -> str:
+    """Construit le prompt de relance avec contexte du plan précédent.
+
+    L'agent Plan a pour consigne (system prompt) de régénérer un plan COMPLET
+    à chaque tour. Cette fonction injecte le dernier plan stocké en début de
+    message pour que l'agent ait le contexte sans devoir réinterroger la BD.
+    """
+    plan_str = json.dumps(previous_plan_json, ensure_ascii=False, indent=2)
+    return (
+        "## Contexte — plan précédent (la session précédente a été terminée pour "
+        "inactivité, on en démarre une nouvelle)\n\n"
+        "Voici le dernier plan que nous avions construit ensemble :\n\n"
+        f"```json\n{plan_str}\n```\n\n"
+        "Conserve cette base et applique la nouvelle demande utilisateur ci-dessous. "
+        "Régénère un plan COMPLET (jamais un diff). Garde les éléments du plan "
+        "précédent qui ne sont pas explicitement contredits.\n\n"
+        "## Nouvelle demande utilisateur\n\n"
+        f"{new_user_message}\n"
+    )
+
+
+async def _fetch_last_plan_context(
+    user: AuthUser, session_id: str
+) -> tuple[str | None, dict[str, Any] | None]:
+    """Lit le dernier plan persisté pour cette session (la plus haute version).
+
+    Retourne (building_id, plan_json) ou (None, None) si Supabase non
+    configuré ou aucun plan persisté.
+    """
+    if not is_supabase_configured():
+        return None, None
+    sb = supabase_for_user(user)
+    res = (
+        sb.schema("app").table("renovation_plans")
+        .select("building_id, plan_json, version")
+        .eq("session_id", session_id)
+        .order("version", desc=True)
+        .limit(1)
+        .execute()
+    )
+    rows = res.data if hasattr(res, "data") else res.get("data", [])
+    if not rows:
+        return None, None
+    return rows[0].get("building_id"), rows[0].get("plan_json") or {}
+
+
+async def _send_with_replay_fallback(
+    user: AuthUser,
+    session_id: str,
+    content: str,
+) -> tuple[str, bool, str | None]:
+    """Envoie un user_message en gérant le cas session terminated.
+
+    Retourne (session_id_effective, was_replayed, previous_session_id_si_replay).
+
+    1. Vérifie le status de la session Anthropic.
+    2. Si idle/working : envoie le message, renvoie le même session_id.
+    3. Si terminated/error :
+       a. Récupère le dernier plan (sb.app.renovation_plans).
+       b. Crée une nouvelle session Anthropic sur 'conx-plan'.
+       c. Envoie un user_message combinant le plan précédent + la nouvelle question.
+       d. Persiste la nouvelle session en `app.agent_sessions` (lien soft avec
+          l'ancienne via `previous_session_id`).
+       e. Renvoie le NOUVEAU session_id + was_replayed=True.
+    """
+    try:
+        sess = await asyncio.to_thread(retrieve_session, session_id)
+        status_val = sess.get("status", "unknown")
+    except Exception as exc:
+        logger.warning("retrieve_session %s a échoué (%s) — assumed terminated.", session_id, exc)
+        status_val = "terminated"
+
+    if status_val not in ("terminated", "error", "expired"):
+        # Cas nominal : on envoie directement.
+        await asyncio.to_thread(send_user_message, session_id, content)
+        return session_id, False, None
+
+    # ----- Replay fallback path -----
+    logger.warning(
+        "Session %s status=%s → replay-previous-plan fallback engagé.",
+        session_id, status_val,
+    )
+    building_id, plan_json = await _fetch_last_plan_context(user, session_id)
+    if plan_json is None:
+        # Pas de plan stocké à rejouer — on relance sans contexte.
+        # L'utilisateur perdra le détail des tours précédents mais la nouvelle
+        # session pourra repartir depuis zéro.
+        plan_json = {"note": "Pas de plan v1 stocké. Démarrage from-scratch."}
+    if building_id is None:
+        building_id = "unknown"
+
+    prompt = _build_replay_prompt(plan_json, content)
+    new_session = await asyncio.to_thread(create_session, "conx-plan")
+    new_sid = new_session["session_id"]
+    await asyncio.to_thread(send_user_message, new_sid, prompt)
+
+    # Persist new session row (RLS isole user_id)
+    if is_supabase_configured():
+        sb = supabase_for_user(user)
+        try:
+            sb.schema("app").table("agent_sessions").insert(
+                {
+                    "session_id": new_sid,
+                    "agent_name": "conx-plan",
+                    "user_id": user.user_id,
+                    "user_query": content[:500],
+                    "building_id": building_id,
+                    "previous_session_id": session_id,
+                }
+            ).execute()
+        except Exception as exc:
+            # `previous_session_id` peut ne pas exister dans le schema —
+            # on retente sans la colonne pour rester compatible.
+            logger.warning(
+                "Persist agent_sessions avec previous_session_id échoué (%s) — fallback sans.",
+                exc,
+            )
+            sb.schema("app").table("agent_sessions").insert(
+                {
+                    "session_id": new_sid,
+                    "agent_name": "conx-plan",
+                    "user_id": user.user_id,
+                    "user_query": content[:500],
+                    "building_id": building_id,
+                }
+            ).execute()
+
+    return new_sid, True, session_id
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +458,7 @@ async def send_plan_message(
     if is_supabase_configured():
         sb = supabase_for_user(user)
         res = (
-            sb.table("agent_sessions")
+            sb.schema("app").table("agent_sessions")
             .select("session_id, agent_name")
             .eq("session_id", session_id)
             .limit(1)
@@ -331,15 +472,26 @@ async def send_plan_message(
                 status_code=400, detail="Cette session n'est pas une session Plan."
             )
 
-    next_v = await _next_version(user, session_id)
-    send_user_message(session_id, req.content)
+    # _send_with_replay_fallback peut décider de basculer sur une nouvelle
+    # session Anthropic si l'ancienne est `terminated` (B-001 long-idle).
+    effective_sid, was_replayed, prev_sid = await _send_with_replay_fallback(
+        user, session_id, req.content
+    )
+    # Version : si on a replayé, on recommence à v1 sur la nouvelle session.
+    # Sinon on incrémente sur la session courante.
+    next_v = 1 if was_replayed else await _next_version(user, session_id)
 
     # Note : la persistance du plan_json final se fera côté frontend (quand
     # il aura reçu l'agent_message complet via SSE et appelé un endpoint
     # `/api/agents/plan/{session_id}/persist` — à coder en J12.5 si besoin).
     # Pour l'instant, le frontend assume cette responsabilité.
 
-    return PlanMessageResponse(session_id=session_id, version=next_v)
+    return PlanMessageResponse(
+        session_id=effective_sid,
+        version=next_v,
+        was_replayed=was_replayed,
+        previous_session_id=prev_sid,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +618,7 @@ async def persist_plan(
     sb = supabase_for_user(user)
     # Lire le building_id depuis la session
     sess_res = (
-        sb.table("agent_sessions")
+        sb.schema("app").table("agent_sessions")
         .select("building_id")
         .eq("session_id", session_id)
         .limit(1)
@@ -488,7 +640,7 @@ async def persist_plan(
         "carbon_breakdown": req.carbon_breakdown,
         "user_message": req.user_message,
     }
-    ins_res = sb.table("renovation_plans").insert(insert_payload).execute()
+    ins_res = sb.schema("app").table("renovation_plans").insert(insert_payload).execute()
     ins_rows = ins_res.data if hasattr(ins_res, "data") else ins_res.get("data", [])
     if not ins_rows:
         raise HTTPException(status_code=500, detail="Insertion plan échouée.")
@@ -521,7 +673,7 @@ async def plan_history(
 
     sb = supabase_for_user(user)
     res = (
-        sb.table("renovation_plans")
+        sb.schema("app").table("renovation_plans")
         .select("id,session_id,version,user_message,plan_json,carbon_t_total,carbon_breakdown,created_at")
         .eq("session_id", session_id)
         .order("version", desc=False)

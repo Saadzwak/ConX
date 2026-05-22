@@ -9,15 +9,15 @@
  *   └──────────────────────────────────┴─────────────────────┘
  */
 
-import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Building2, Sparkles, Hammer } from "lucide-react";
+import { ArrowLeft, Building2 } from "lucide-react";
 
 import { ProjetMap } from "@/map/ProjetMap";
+import { PlanChat } from "@/components/PlanChat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { dpeColor, cn } from "@/lib/utils";
+import { dpeColor } from "@/lib/utils";
 import { getBuilding, type BuildingDetail } from "@/lib/api";
 
 export function ProjetPage() {
@@ -91,10 +91,10 @@ function ProjetView({ id }: { id: string }) {
         </div>
       </div>
 
-      <aside className="w-[420px] shrink-0 border-l bg-card flex flex-col overflow-hidden">
+      <aside className="w-[460px] shrink-0 border-l bg-card flex flex-col overflow-hidden">
         <FicheHeader building={building} />
         <FicheBody building={building} />
-        <ChatPlaceholder buildingId={building.building_id} />
+        <PlanChat building={building} />
       </aside>
     </div>
   );
@@ -220,42 +220,6 @@ function FicheBody({ building }: { building: BuildingDetail }) {
         Sources : BDNB CSTB {building.bdnb_millesime ?? "2025-07.a"}, DPE ADEME,
         scoring déterministe ConX (méthodologie à venir J19).
       </section>
-    </div>
-  );
-}
-
-function ChatPlaceholder({ buildingId }: { buildingId: string }) {
-  // J16 : à remplacer par un vrai chat SSE relié à /api/agents/plan
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    // Évite warning unused
-    void buildingId;
-  }, [buildingId]);
-
-  return (
-    <div className={cn("border-t bg-muted/30 p-3", open ? "min-h-[260px]" : "")}>
-      {!open ? (
-        <Button className="w-full" onClick={() => setOpen(true)}>
-          <Sparkles className="h-4 w-4 mr-1.5" />
-          Générer un plan rénovation IA
-        </Button>
-      ) : (
-        <div className="text-xs text-muted-foreground space-y-2">
-          <div className="font-semibold text-sm text-foreground flex items-center gap-1.5">
-            <Hammer className="h-4 w-4 text-primary" />
-            Plan rénovation IA (à venir J16)
-          </div>
-          <p>
-            Le chat itératif avec l'Agent <code>conx-plan</code> (Claude Opus 4.7)
-            arrivera en J16. Le backend SSE
-            <code className="mx-1 text-foreground">/api/agents/plan</code>
-            est déjà opérationnel.
-          </p>
-          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
-            Fermer
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

@@ -155,6 +155,115 @@ export function exportUrl(format: "csv" | "geojson", params: BuildingsListParams
   return `${API_BASE}/exports/strategie.${format}?${search.toString()}`;
 }
 
+// ---------------------------------------------------------------------------
+// Mode Projet — Agent Plan (chat itératif)
+// ---------------------------------------------------------------------------
+
+export interface PlanStartRequest {
+  building_id: string;
+  target_class?: string;
+  preferences?: Record<string, unknown>;
+  initial_message?: string;
+}
+
+export interface PlanStartResponse {
+  session_id: string;
+  agent_name: string;
+  building_id: string;
+  status: string;
+  cost_estimate_eur: [number, number];
+}
+
+export interface PlanMessageResponse {
+  session_id: string;
+  version: number;
+  cost_estimate_eur: [number, number];
+  was_replayed: boolean;
+  previous_session_id: string | null;
+}
+
+export async function startPlanSession(req: PlanStartRequest): Promise<PlanStartResponse> {
+  return fetchJson<PlanStartResponse>(`${API_BASE}/agents/plan/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function sendPlanMessage(
+  sessionId: string,
+  content: string,
+): Promise<PlanMessageResponse> {
+  return fetchJson<PlanMessageResponse>(
+    `${API_BASE}/agents/plan/${encodeURIComponent(sessionId)}/message`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    },
+  );
+}
+
+/** URL SSE pour `EventSource`. L'auth est portée par cookies/JWT du domaine. */
+export function planStreamUrl(sessionId: string, after?: string): string {
+  const params = new URLSearchParams();
+  if (after) params.set("after", after);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return `${API_BASE}/agents/plan/${encodeURIComponent(sessionId)}/stream${qs}`;
+}
+
+// ---------------------------------------------------------------------------
+// Conformité IFC (J17)
+// ---------------------------------------------------------------------------
+
+export interface IfcCheck {
+  name: string;
+  pass: boolean | null;
+  value?: unknown;
+  threshold?: unknown;
+  message?: string;
+}
+
+export interface IfcReport {
+  schema?: string;
+  entities_count?: Record<string, number>;
+  summary?: {
+    walls?: number;
+    doors?: number;
+    windows?: number;
+    spaces?: number;
+  };
+  re2020_checks?: Record<string, IfcCheck>;
+  pmr_checks?: Record<string, IfcCheck>;
+  warnings?: string[];
+}
+
+export interface IfcUploadResponse {
+  validation_id: string;
+  ifc_filename: string;
+  rapport_json: IfcReport;
+  pdf_url: string;
+  re2020_pass: boolean | null;
+  pmr_pass: boolean | null;
+}
+
+export async function uploadIfc(file: File): Promise<IfcUploadResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const headers = await authHeaders();
+  // Note: ne PAS forcer Content-Type, le navigateur set le multipart boundary.
+  const resp = await fetch(`${API_BASE}/ifc/upload`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`HTTP ${resp.status} ${resp.statusText} — ${text.slice(0, 300)}`);
+  }
+  return (await resp.json()) as IfcUploadResponse;
+}
+
 /** Géocodage adresse via la BAN (data.gouv) — appel direct frontend (pas de proxy). */
 export interface BanFeature {
   properties: {

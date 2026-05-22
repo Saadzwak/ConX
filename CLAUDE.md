@@ -366,10 +366,11 @@ Tu ne décides JAMAIS seul sur :
 
 | ID | Sujet | Sévérité | Pour quand |
 |---|---|---|---|
-| ~~B-001~~ | ~~TTL session Managed Agents~~ | RESOLU 2026-05-22 | TTL ≥ 6 min confirmé, contexte retenu. Fallback replay-previous-plan à implémenter J16 si besoin (long-idle utilisateur). |
+| ~~B-001~~ | ~~TTL session Managed Agents~~ | RESOLU 2026-05-22 | TTL ≥ **10 min 05 s** confirmé (run net), contexte retenu. Fallback replay-previous-plan **implémenté** (`_send_with_replay_fallback` + 5 tests). |
 | B-002 | Maturité asyncio supabase-py | MINEUR | J11 (test) |
 | ~~B-003~~ | ~~Accès API INIES~~ | RESOLU 2026-05-21 | — (cf. D-014) |
 | B-004 | Hébergement applicatif final | MINEUR | J19 (arbitrage partenaire) |
+| ~~SUP~~ | ~~Supabase migration RLS~~ | RESOLU 2026-05-22 | Schema `app` créé via PAT, RLS roundtrip OK (4 tables isolées par user_id). |
 
 ---
 

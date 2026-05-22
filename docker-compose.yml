@@ -42,9 +42,11 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
+      - ./data:/app/data:ro              # data/fdes_static.json + sous-dossiers (storage est mounté rw plus bas)
       - ./data/storage:/app/data/storage
       - ./config:/app/config:ro
       - ./skills:/app/skills:ro          # J13 — backend/app/ifc/validator.py importe skills/ifc-check/ifc_validator.py
+      - ./agents:/app/agents:ro          # J12+ — agents_client.py lit agents/agents.lock.yaml (created by sync.py)
     depends_on:
       postgres_local:
         condition: service_healthy

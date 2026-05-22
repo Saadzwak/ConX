@@ -61,18 +61,26 @@ La doc `/docs/en/managed-agents/sessions` et `/docs/en/managed-agents/environmen
 | Keywords msg1 retrouvés dans reply2 | 7/7 | **7/7** (pavillon, 1965, 412, brique, 124, gaz, chanvre) |
 | Verdict | PASS | **PASS** |
 
-**Note sur l'écart 10 min visé / 6 min observé** : la première version de `wait_for_idle` (avant patch) avait une race condition — elle pouvait retourner sur un état idle pré-existant avant que l'agent ait commencé à traiter le message. Sur le run principal, la fonction est retournée tôt, donc le `sleep(600s)` a démarré pendant que msg1 était encore en traitement (~4 min). L'idle réel observé entre la fin de traitement msg1 (09:53:34 UTC) et le début de msg2 (09:59:36 UTC) est donc 6:04. Le code a été corrigé (suivi `pre_event_id` + délai initial 2 s) — une ré-exécution donnerait 10 min nets. Non re-exécuté pour économiser le budget.
+**Note sur l'écart initial 10 min visé / 6 min observé** : la première version de `wait_for_idle` (avant patch) avait une race condition — elle pouvait retourner sur un état idle pré-existant avant que l'agent ait commencé à traiter le message. Sur le run initial, la fonction est retournée tôt, donc le `sleep(600s)` a démarré pendant que msg1 était encore en traitement (~4 min). L'idle réel observé entre la fin de traitement msg1 (09:53:34 UTC) et le début de msg2 (09:59:36 UTC) est donc 6:04.
+
+**Re-run avec wait_for_idle patché (2026-05-22T11:30 UTC)** :
+- session_id `sesn_01H4brQKmtADnzpqF27eAE4E`.
+- msg1 processing : 3 min 39 s (11:15:03 → 11:18:42).
+- **Idle window observé : 10 min 05 s** (11:18:42 idle → 11:28:47 resume).
+- Status après sleep : `idle` (PAS terminated). Contexte msg1 rappelé dans reply2 (chanvre v1 → CLT v2, mêmes 7 keywords). Coût ~0.6 €.
+
+**TTL ≥ 10 min confirmé empiriquement, contexte retenu**. Largement au-delà du chat itératif (1-3 min entre tours).
 
 ### Résolution
 **Date** : 2026-05-22
 **Décision** : **TTL ≥ 6 min confirmé empiriquement, session reste idle, contexte retenu**. Suffisant pour le use case chat itératif (l'utilisateur réfléchit 1-3 min entre deux tours).
 
 **Conséquence sur le plan** :
-- Pas besoin du fallback "replay-previous-plan" pour l'enveloppe 5 min du pitch démo (idle entre 2 tours utilisateurs reste sous les 6 min observés).
-- Le fallback "replay-previous-plan" **n'est PAS encore codé** côté backend. À implémenter J16 si nécessaire (couvre le cas où l'utilisateur quitte la page puis revient plusieurs heures plus tard). Logique prévue : si `client.beta.sessions.retrieve(sid)` renvoie `terminated`, recréer une nouvelle session et injecter le dernier plan stocké en `app.renovation_plans` comme premier `user.message` avec un préfixe "Voici le plan généré au tour précédent : <plan>. L'utilisateur demande maintenant : <nouvelle question>".
-- Le code `wait_for_idle` patché (avec tracking `pre_event_id`) est dans `agents/test_ttl.py`. À re-utiliser dans tout test ou code qui poll un statut de session après un `events.send`.
+- Pas besoin du fallback "replay-previous-plan" pour l'enveloppe 5 min du pitch démo (TTL ≥ 10 min confirmé).
+- Le fallback "replay-previous-plan" **est implémenté** côté backend dans `backend/app/routers/agents.py::_send_with_replay_fallback` (cf. décision matinale du partenaire 2026-05-22). Logique : si `retrieve_session` renvoie `terminated`/`error`, le helper crée une nouvelle session Anthropic, lit le dernier plan stocké en `app.renovation_plans` (RLS user_id), injecte le contexte + la nouvelle question, persiste la nouvelle session avec `previous_session_id` pour traçabilité. 5 tests unitaires couvrent les cas (status idle direct send, status terminated avec plan, status terminated sans plan stocké, exception retrieve, format du prompt). Frontend (PlanChat) bascule transparemment vers le nouveau `session_id` quand `was_replayed=true` est renvoyé.
+- Le code `wait_for_idle` patché (tracking `pre_event_id`) reste dans `agents/test_ttl.py` pour les futurs tests.
 
-**À surveiller** : si un utilisateur laisse une session ouverte plusieurs heures (e.g. il quitte la page puis revient le lendemain), on n'a pas testé. Pour ce cas, implémenter le fallback replay-previous-plan (J16).
+**Couverture** : sessions courtes (chat 5 min) ✓ ; sessions long-idle (l'utilisateur quitte et revient 1 h plus tard, TTL dépassé) ✓ via le fallback.
 
 ---
 

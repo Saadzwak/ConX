@@ -105,14 +105,21 @@ def test_decode_token_sans_secret_raise_503(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_sans_header_raise_401() -> None:
+async def test_get_current_user_sans_header_raise_401(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Vérifie le comportement legacy sans bypass."""
+    monkeypatch.delenv("CONX_DEV_BYPASS_AUTH", raising=False)
     with pytest.raises(HTTPException) as exc:
         await get_current_user(authorization=None)
     assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_header_malforme_raise_401() -> None:
+async def test_get_current_user_header_malforme_raise_401(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CONX_DEV_BYPASS_AUTH", raising=False)
     with pytest.raises(HTTPException) as exc:
         await get_current_user(authorization="Token xyz")
     assert exc.value.status_code == 401
@@ -202,8 +209,11 @@ async def test_verify_internal_token_sans_env_raise_503(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
-async def test_dev_bypass_off_par_defaut_raise_401() -> None:
+async def test_dev_bypass_off_par_defaut_raise_401(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Sans CONX_DEV_BYPASS_AUTH, pas d'auth = 401 (comportement normal)."""
+    monkeypatch.delenv("CONX_DEV_BYPASS_AUTH", raising=False)
     with pytest.raises(HTTPException) as exc:
         await get_current_user(authorization=None)
     assert exc.value.status_code == 401
@@ -216,7 +226,7 @@ async def test_dev_bypass_on_sans_auth_renvoie_user_fictif(
     """Avec CONX_DEV_BYPASS_AUTH=1, pas d'auth = user fictif valide (pas 401)."""
     monkeypatch.setenv("CONX_DEV_BYPASS_AUTH", "1")
     user = await get_current_user(authorization=None)
-    assert user.user_id == "00000000-0000-0000-0000-000000000dev"
+    assert user.user_id == "00000000-0000-0000-0000-0000000000de"
     assert user.email == "dev@conx.local"
     assert user.role in {"architecte", "collectivite", "bailleur", "entreprise"}
 
@@ -228,7 +238,7 @@ async def test_dev_bypass_on_header_malforme_renvoie_user_fictif(
     """Avec bypass, un header mal formé n'est plus une 401 — on tolère."""
     monkeypatch.setenv("CONX_DEV_BYPASS_AUTH", "1")
     user = await get_current_user(authorization="malformé sans bearer")
-    assert user.user_id == "00000000-0000-0000-0000-000000000dev"
+    assert user.user_id == "00000000-0000-0000-0000-0000000000de"
 
 
 @pytest.mark.asyncio

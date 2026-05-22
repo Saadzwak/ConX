@@ -114,7 +114,7 @@ def decode_token(token: str) -> AuthUser:
 
 
 # Constantes pour le bypass dev (cf. get_current_user)
-_DEV_BYPASS_USER_ID = "00000000-0000-0000-0000-000000000dev"
+_DEV_BYPASS_USER_ID = "00000000-0000-0000-0000-0000000000de"
 _DEV_BYPASS_EMAIL = "dev@conx.local"
 
 
@@ -148,7 +148,7 @@ async def get_current_user(
     Retourne un `AuthUser`. Lève 401 si absent ou invalide.
 
     Mode dev bypass : si `CONX_DEV_BYPASS_AUTH=1`, accepte les requêtes sans
-    JWT et retourne un user fictif (UUID `00000000-0000-0000-0000-000000000dev`).
+    JWT et retourne un user fictif (UUID `00000000-0000-0000-0000-0000000000de`).
     À ne JAMAIS activer en prod.
     """
     if not authorization:

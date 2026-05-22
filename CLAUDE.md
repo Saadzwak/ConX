@@ -2,7 +2,7 @@
 
 > **À toi, Claude, qui ouvre ce repo dans une nouvelle session : lis intégralement ce fichier avant tout autre.** Il est la référence unique. Quand quelque chose contredit ce fichier, ce fichier gagne. Quand tu changes quelque chose de structurant, mets ce fichier à jour.
 
-**Dernière mise à jour** : 2026-05-21
+**Dernière mise à jour** : 2026-05-22
 **Version plan** : v1 (plan validé à 95 %, 7 points préparatoires en cours)
 **Statut** : Pré-implémentation (aucun code applicatif écrit avant validation des livrables prép.)
 
@@ -366,7 +366,7 @@ Tu ne décides JAMAIS seul sur :
 
 | ID | Sujet | Sévérité | Pour quand |
 |---|---|---|---|
-| B-001 | TTL session Managed Agents | IMPACT MAJEUR | J10 (test E2E) |
+| ~~B-001~~ | ~~TTL session Managed Agents~~ | RESOLU 2026-05-22 | TTL ≥ 6 min confirmé, contexte retenu. Fallback replay-previous-plan à implémenter J16 si besoin (long-idle utilisateur). |
 | B-002 | Maturité asyncio supabase-py | MINEUR | J11 (test) |
 | ~~B-003~~ | ~~Accès API INIES~~ | RESOLU 2026-05-21 | — (cf. D-014) |
 | B-004 | Hébergement applicatif final | MINEUR | J19 (arbitrage partenaire) |

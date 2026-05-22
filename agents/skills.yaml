@@ -1,0 +1,24 @@
+carbon-calc:
+  display_title: conx-carbon-calc
+  skill_id: skill_01HRyZwKrtTDS3nexTnaGVa9
+  version: '1779442469233105'
+fdes-lookup:
+  display_title: conx-fdes-lookup
+  skill_id: skill_01TVmMxN6NURtEwU4wHyi3as
+  version: '1779442470264214'
+horssite-biosource:
+  display_title: conx-horssite-biosource
+  skill_id: skill_01HQTG569UTKUbLSPer7N9x5
+  version: '1779442472455788'
+ifc-check:
+  display_title: conx-ifc-check
+  skill_id: skill_01SkLZqTieqX12qt3gu668qt
+  version: '1779442471339845'
+pmr-checks:
+  display_title: conx-pmr-checks
+  skill_id: skill_01Q5YqPEPr1uzh4HxpvBSrcj
+  version: '1779442474238016'
+re2020-target:
+  display_title: conx-re2020-target
+  skill_id: skill_01TmwL4EswXXujAieexEftAj
+  version: '1779442473330242'

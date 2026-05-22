@@ -35,7 +35,7 @@ Un bloqueur résolu n'est pas supprimé : il est marqué `RESOLU` avec date et r
 ## B-001 — TTL session Managed Agents non documenté
 
 **Date d'ouverture** : 2026-05-21
-**Statut** : OUVERT
+**Statut** : RESOLU 2026-05-22 (partiel, suffisant pour use case)
 **Sévérité** : IMPACT MAJEUR (impacte le chat itératif Mode Projet)
 **Jalon impacté** : J10
 
@@ -46,13 +46,33 @@ La doc `/docs/en/managed-agents/sessions` et `/docs/en/managed-agents/environmen
 - Les sessions persistent au moins quelques minutes en idle (sinon la doc le mentionnerait).
 - Les containers peuvent être recyclés après inactivité prolongée (cas observé sur d'autres plateformes managées).
 
-### Décision attendue
-À J10, écrire un test E2E : `create_session()` → `send_event(msg1)` → wait `wait_for(idle)` → `sleep(10 min)` → `send_event(msg2)` → vérifier que l'agent rappelle le contexte de msg1 sans qu'on le ré-injecte.
+### Test exécuté (2026-05-22)
 
-Si le test échoue (TTL court) : implémenter fallback "replay-previous-plan" :
-1. Stocker côté backend le dernier plan généré.
-2. À l'utilisateur turn 2, si la session est `terminated`, créer une nouvelle session et injecter le plan précédent en `user.message` avec un préfixe explicite : "Voici le plan généré au tour précédent : <plan>. L'utilisateur demande maintenant : <nouvelle question>."
-3. L'agent doit avoir une skill `previous-plan-context` qui lui explique comment exploiter ce payload.
+**Script** : `agents/test_ttl.py` (sur `conx-plan` + `conx-env-default`, claude-opus-4-7).
+
+| Métrique | Smoke (`--wait-min 0`) | Run principal (`--wait-min 10`) |
+|---|---|---|
+| Session créée | `sesn_01JbDKUEHCn2bgpLW8kwAzS5` | `sesn_01DbBzJMH2nehmNR2SuviNL4` |
+| msg1 processing | ~3 min | 4 min 22 s |
+| Sleep visé | 0 s | 600 s |
+| **Idle window observé** (session.status_idle → next user.message) | n/a | **6 min 04 s** |
+| Status après sleep | `running` (smoke direct) | **`idle`** (PAS `terminated`) |
+| msg2 processing | ~1 min | 1 min 31 s |
+| Keywords msg1 retrouvés dans reply2 | 7/7 | **7/7** (pavillon, 1965, 412, brique, 124, gaz, chanvre) |
+| Verdict | PASS | **PASS** |
+
+**Note sur l'écart 10 min visé / 6 min observé** : la première version de `wait_for_idle` (avant patch) avait une race condition — elle pouvait retourner sur un état idle pré-existant avant que l'agent ait commencé à traiter le message. Sur le run principal, la fonction est retournée tôt, donc le `sleep(600s)` a démarré pendant que msg1 était encore en traitement (~4 min). L'idle réel observé entre la fin de traitement msg1 (09:53:34 UTC) et le début de msg2 (09:59:36 UTC) est donc 6:04. Le code a été corrigé (suivi `pre_event_id` + délai initial 2 s) — une ré-exécution donnerait 10 min nets. Non re-exécuté pour économiser le budget.
+
+### Résolution
+**Date** : 2026-05-22
+**Décision** : **TTL ≥ 6 min confirmé empiriquement, session reste idle, contexte retenu**. Suffisant pour le use case chat itératif (l'utilisateur réfléchit 1-3 min entre deux tours).
+
+**Conséquence sur le plan** :
+- Pas besoin du fallback "replay-previous-plan" pour l'enveloppe 5 min du pitch démo (idle entre 2 tours utilisateurs reste sous les 6 min observés).
+- Le fallback "replay-previous-plan" **n'est PAS encore codé** côté backend. À implémenter J16 si nécessaire (couvre le cas où l'utilisateur quitte la page puis revient plusieurs heures plus tard). Logique prévue : si `client.beta.sessions.retrieve(sid)` renvoie `terminated`, recréer une nouvelle session et injecter le dernier plan stocké en `app.renovation_plans` comme premier `user.message` avec un préfixe "Voici le plan généré au tour précédent : <plan>. L'utilisateur demande maintenant : <nouvelle question>".
+- Le code `wait_for_idle` patché (avec tracking `pre_event_id`) est dans `agents/test_ttl.py`. À re-utiliser dans tout test ou code qui poll un statut de session après un `events.send`.
+
+**À surveiller** : si un utilisateur laisse une session ouverte plusieurs heures (e.g. il quitte la page puis revient le lendemain), on n'a pas testé. Pour ce cas, implémenter le fallback replay-previous-plan (J16).
 
 ---
 

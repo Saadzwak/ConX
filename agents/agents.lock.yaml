@@ -1,0 +1,11 @@
+agent_env:
+  conx-conformite: conx-env-conformite
+  conx-plan: conx-env-default
+  conx-selection: conx-env-default
+agents:
+  conx-conformite: agent_0175TwaKPKQTZgipvwVQj3Yf
+  conx-plan: agent_01RGJxJVyN5jGLup9fGHQWxs
+  conx-selection: agent_011VQ9BVoKmzdBVYXsCSy3JU
+environments:
+  conx-env-conformite: env_01PmhwxZeBKTSLegzg187yxg
+  conx-env-default: env_012Er8NYKMyiXLHmo4csmHjj

@@ -25,9 +25,7 @@ agents:
     model: claude-opus-4-7
     builtin_tools:
       - agent_toolset_20260401     # bash + file + web_fetch + web_search
-    skills:
-      # À renseigner après upload — voir agents/skills.yaml
-      - name: selection-scoring
+    skills: []                     # le system prompt + web_fetch suffisent (D-006)
     system_prompt_file: agents/system_prompts/selection.md
     networking:
       # En démo : tunnel ngrok pointe vers le backend FastAPI local

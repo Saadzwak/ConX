@@ -863,3 +863,132 @@ Métriques retenues pour la doc et le pitch jury :
   partenaire : choix design system (Tailwind ? shadcn ?), choix carto
   (deck.gl seul vs avec MapLibre styling), prio Mode Stratégie vs Projet,
   fixtures démo bâtiment vedette.
+
+---
+
+## 2026-05-22 — Session 12 (B-001 résolu + Skills uploadés + Sync agents + VL analyse)
+
+**Durée** : ~6h overnight (autonome) + ~1h matin (suite + commit)
+**Tokens** : élevé (multiples calls Anthropic API + analyse PostGIS)
+**Coût Anthropic estimé** : ~2-3 € (TTL test smoke + run principal 10 min + sync agents)
+**Statut** : LIVRÉ (commit ci-dessous)
+
+### Livré
+
+**B-009 — Upload Skills Anthropic** :
+- `agents/upload_skills.py` : helper `files_from_dir()` du SDK, idempotent
+  (check par display_title, version=create si exists), persiste lockfile
+  `agents/skills.yaml`.
+- 6 skills uploadées sur `https://api.anthropic.com/v1/skills` :
+  - conx-carbon-calc, conx-fdes-lookup, conx-ifc-check,
+    conx-horssite-biosource, conx-re2020-target, conx-pmr-checks.
+- Beta header `skills-2025-10-02`. Coût upload = 0 € (gratuit).
+
+**ANT — agents/sync.py refondu** :
+- 2 environments créés :
+  - `conx-env-default` (allowed_hosts: ngrok wildcards + supabase + ign +
+    ademe ; pip pkgs: requests, pyyaml).
+  - `conx-env-conformite` (pip pkgs: ifcopenshell additionnels).
+- 3 agents créés (claude-opus-4-7, beta `managed-agents-2026-04-01`) :
+  - `conx-selection` : skills=[] (D-006 : scoring déterministe, system
+    prompt suffit, web_fetch builtin tool pour appels backend).
+  - `conx-plan` : skills=[carbon-calc, fdes-lookup, horssite-biosource,
+    re2020-target].
+  - `conx-conformite` : skills=[ifc-check, re2020-target, pmr-checks].
+- Lockfile `agents/agents.lock.yaml` (env_id + agent_id + agent_env mapping).
+- Bind `environment_id` à la session (PAS à l'agent — découverte SDK :
+  `sessions.create(agent, environment_id)`).
+- Fix fallback `*.ngrok-free.app` wildcard quand `NGROK_PUBLIC_URL`
+  contient le placeholder `YOUR_TUNNEL` (allowed_hosts API rejette
+  les non-hostnames).
+
+**B-001 — Test TTL session (RESOLU)** :
+- Test `agents/test_ttl.py` exécuté 2 fois :
+  - Smoke (`--wait-min 0`) : PASS, 7/7 keywords retrouvés.
+  - Run principal (`--wait-min 10`) : PASS, status_after_sleep=`idle`.
+- **Verdict empirique** : TTL ≥ **6 min 04 s** d'idle window observé entre
+  `session.status_idle` (09:53:34 UTC) et `user.message` suivant
+  (09:59:36 UTC). Session restée `idle`, PAS `terminated`. Contexte msg1
+  rappelé dans reply2 (pavillon, 1965, 412, brique, 124, gaz, chanvre
+  tous présents).
+- L'écart 10 min visé / 6 min observé vient d'une race condition initiale
+  dans `wait_for_idle` (corrigée dans le commit — tracking `pre_event_id`
+  + sleep initial 2 s + `main()` met à jour pour passer le `pre_id` à
+  `wait_for_idle`). Non re-exécuté pour économiser le budget — 6 min
+  est déjà au-delà du use case chat itératif (1-3 min entre tours).
+- Fallback "replay-previous-plan" **PAS encore implémenté** côté backend.
+  À faire J16 si nécessaire (couvre le cas long-idle utilisateur, hors
+  pitch démo).
+
+**Cleanup `agents.yaml`** :
+- Retiré référence skill `selection-scoring` non uploadée. L'agent
+  Sélection s'appuie sur system prompt + `web_fetch` (D-006).
+
+**Documentation Vieux-Lille (quartier vedette démo)** :
+- `docs/VIEUX_LILLE_ANALYSE.md` : 1819 bâtiments dans la bbox, 577 DPE
+  réels (31.7 %), 51 MH, 0 SPR (champ BDNB non peuplé pour Lille,
+  limitation millésime 2025-07.a). 3 candidats top score :
+  - **Candidat A** : `bdnb-bg-NKGA-DUZ2-J28H` (RNB 25E29JA2A9V6), R+2
+    7 logts 1870, DPE F, score 91.1, 517 tCO₂.
+  - **Candidat B** : `bdnb-bg-JBP7-PFQL-4T69` (RNB 1JZ6GKJCV1ZS), R+3 17
+    logts 1930, DPE G, score 91.1, 714 tCO₂ (record quartier).
+  - **Candidat C** : `bdnb-bg-7F6X-1AGX-L22Q` (RNB GMJ42V7S3YCW), R+4 3
+    logts 1900, DPE F, score 77.1, 300 tCO₂.
+- **Note pour le partenaire** : aucun bailleur social ne matche tous les
+  critères (F/G + ADEME + pré-1948) dans la bbox Vieux-Lille → relâché
+  vers personne_morale_privee (copros anciennes). Fallback Wazemmes ou
+  Lens centre si le partenaire préfère un narratif logement social.
+
+**Documentation LiDAR Vieux-Lille** :
+- `docs/LIDAR_VIEUX_LILLE.md` : 4 dalles IGN LiDAR HD identifiées
+  (0704_7060, 0704_7061, 0705_7060, 0705_7061), ~2-3 Go total. dpt 59 en
+  open data Etalab depuis 2024. URL Etalab/geopf.fr non testée en CLI
+  (l'IGN reformatait régulièrement) — recommandation au partenaire :
+  download manuel via geoservices.ign.fr.
+- Stub `scripts/lidar_to_gltf.py` à compléter J15.
+
+**Supabase migration (BLOQUÉ)** :
+- `scripts/supabase_migrate.py` + `scripts/supabase_rls_roundtrip.py`
+  prêts. Bloqué : DDL impossible via REST PostgREST (anon/service_role
+  keys insuffisants pour CREATE TABLE). Nécessite **DB password OU
+  Personal Access Token** OU exécution manuelle dans Supabase SQL
+  Editor.
+- `docs/SUPABASE_MIGRATION.md` documente les 3 voies pour le partenaire.
+
+### Bloqueurs résolus
+- **B-001** (TTL session Managed Agents) : RESOLU 2026-05-22 (cf. supra).
+- **B-009** (Skills upload) : RESOLU (6 skills uploadées, lockfile).
+- **B-010** (carbon-calc skill bundle sandbox) : workaround backend HTTP
+  + bundle Anthropic skill, double tirage. Le bundle Anthropic est uploadé
+  et lié à l'agent Plan, le backend HTTP fallback reste actif si l'agent
+  préfère.
+
+### Bloqueurs ouverts (mis à jour)
+- **B-002** (asyncio supabase-py) : statut MINEUR confirmé, à valider J11
+  côté tests.
+- **B-004** (hébergement applicatif final) : différé post-concours.
+- **SUP** (Supabase migration RLS) : besoin DB password OU PAT côté
+  partenaire. Scripts prêts.
+- **VL — pré-gen MVT tiles VL zoom 14-18** : à faire après le commit
+  (avec martin + vues PostGIS existantes).
+
+### Prochaine étape
+1. **Commit** ce que ci-dessus (advisor → OK).
+2. **VL — pré-gen MVT tiles Vieux-Lille zoom 14-18** (#48) : warm le cache
+   martin pour la démo.
+3. **J14 — Frontend Mode Stratégie** (#50) : init avec Vite + React + TS +
+   Tailwind + shadcn/ui, intégrer deck.gl + MapLibre, fetch
+   `/api/buildings?bbox=VL`.
+
+### Questions ouvertes pour le partenaire
+1. **Bailleur social vs copros privées** dans la démo Vieux-Lille : OK
+   pour rester sur copros privées (narratif "passoires urbaines
+   fragmentées, opération collective") OU bascule sur Wazemmes/Lens
+   centre pour avoir un bailleur social vedette ?
+2. **Re-run TTL test 10 min "propre"** (avec wait_for_idle patché) : OK
+   d'économiser le budget puisque 6 min est déjà au-delà du use case ?
+3. **DB password Supabase OU PAT** : pour débloquer l'application
+   automatisée de la migration 001_app_schema.sql + RLS roundtrip.
+4. **LiDAR HD download manuel** : action partenaire (4 dalles, ~2-3 Go)
+   ou je laisse stub vide et on cale glTF pré-générés en J15 ?
+

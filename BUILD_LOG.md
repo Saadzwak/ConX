@@ -788,3 +788,78 @@ Métriques retenues pour la doc et le pitch jury :
 - J13 Backend IFC (upload + Agent Conformité + PDF) — code pur, pas de
   dépense engagée.
 - J14-J17 Frontend : décisions UX requises → STOP partenaire.
+
+---
+
+## 2026-05-22 — Session 11 (J13 Backend IFC + Conformité + PDF)
+
+**Mode** : autonome de nuit, suite GO partenaire.
+
+### Travail effectué
+- **Module `backend/app/ifc/`** : wrapper `validator.py` qui réexporte la
+  fonction `validate()` depuis `skills/ifc-check/ifc_validator.py` (single
+  source of truth). Fallback de path pour container Docker
+  (`/app/skills/ifc-check`) et dev local (`./skills/ifc-check`).
+- **Module `backend/app/ifc/pdf.py`** : génération PDF via jinja2 +
+  weasyprint, template `app/templates/conformite_rapport.html` avec
+  disclaimer en haut + bas, tableaux RE2020/PMR, listes des échecs avec
+  ID + GlobalId + valeur mesurée.
+- **Router `routers/ifc.py`** : 3 endpoints
+  - `POST /api/ifc/upload` (multipart, max 200 Mo, pipeline validate + PDF
+    en synchrone, persiste app.ifc_validations)
+  - `GET /api/ifc/pdf/:validation_id` (download avec check ownership via
+    Supabase RLS)
+  - `GET /api/ifc/validations` (historique des 50 plus récentes de
+    l'utilisateur)
+- **Dockerfile** : ajout libgl1, libgomp1 (IfcOpenShell), libpango-1.0-0,
+  libpangoft2-1.0-0, libcairo2, libffi-dev, shared-mime-info (WeasyPrint).
+- **requirements.txt** : ajout python-multipart 0.0.20 (FastAPI upload),
+  ifcopenshell 0.8.5, jinja2 3.1.4, weasyprint 63.1.
+- **docker-compose.yml** : mount `./skills:/app/skills:ro` pour que le
+  backend puisse importer ifc_validator.py.
+- **Tests** : 8 tests `test_ifc_router.py` (extension, summarize_pass,
+  config) + 4 tests `test_ifc_pdf.py` (templates, labels, smoke render).
+  Tous PASS — 12/12 dans le container (avec WeasyPrint installé) ;
+  11/12 + 1 skip sur l'hôte Windows (pas de WeasyPrint).
+- **Docs** : `docs/IFC.md` complète.
+
+### Smoke test end-to-end
+- IFC synthétique généré dans le container via `ifcopenshell.file(schema='IFC4')`
+  avec 1 wall + 1 door (largeur 0.85 m) + 1 window.
+- Upload via curl → `/api/ifc/upload` → réponse :
+  - validation_id uuid OK
+  - rapport_json : 4 entités, IFC4, summary correct
+  - RE2020 : tous OK (pas de valeurs Pset, checks vacuously pass)
+  - PMR : door_width FAIL (0.85 m < 0.90 m) ✓ détection correcte
+  - pdf_url retourné
+- Download PDF via `/api/ifc/pdf/<vid>` → 20 KB, format PDF 1.7 valide ✓
+
+### Bloqueurs résolus
+- **B-010 (partial)** : skill ifc-check importable depuis le backend via
+  mount Docker `/app/skills:ro`. Pour le bundle Anthropic (skill cloud), la
+  question reste ouverte (le sandbox n'a pas de mount custom). Mais pour
+  l'usage Mode Conformité backend, c'est OK.
+
+### Décisions techniques notables
+- **Wrapper validator.py au lieu de copie** : `backend/app/ifc/validator.py`
+  réutilise `skills/ifc-check/ifc_validator.py` via sys.path. Pas de code
+  dupliqué — single source of truth dans `skills/`.
+- **Pipeline synchrone** (parse + PDF en 1 requête HTTP) : acceptable pour
+  IFC ≤ 50 Mo (< 10 s). File d'attente prévue J16 si besoin.
+- **PDF stocké sur volume Docker** `./data/storage/pdf/<user_id>/`, jamais
+  dans Supabase Storage (D-011).
+- **Ownership check via Supabase RLS** pour le download PDF — si la query
+  retourne 0 rows, c'est que l'utilisateur n'est pas propriétaire (ou
+  l'ID n'existe pas).
+
+### Bloqueurs ouverts (inchangés)
+- B-001 (TTL session) : test J19.
+- B-009 (Skills upload) : partenaire au matin.
+- B-010 (carbon-calc skill bundle pour Anthropic sandbox) : workaround
+  endpoint HTTP — branchement possible J17.
+
+### Prochaine étape
+- Frontend (J14-J17) : décisions UX requises. **STOP** — au réveil du
+  partenaire : choix design system (Tailwind ? shadcn ?), choix carto
+  (deck.gl seul vs avec MapLibre styling), prio Mode Stratégie vs Projet,
+  fixtures démo bâtiment vedette.

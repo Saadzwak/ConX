@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Pré-vérification ConX — {{ filename }}</title>
+  <style>
+    @page { size: A4; margin: 1.5cm; }
+    body { font-family: 'Helvetica', 'Arial', sans-serif; font-size: 11pt; color: #1a1a1a; }
+    h1 { color: #1c4e80; font-size: 22pt; margin-bottom: 0.2em; }
+    h2 { color: #1c4e80; font-size: 14pt; border-bottom: 2px solid #1c4e80; padding-bottom: 0.2em; margin-top: 1.5em; }
+    h3 { font-size: 12pt; margin-top: 1em; }
+    .disclaimer {
+      background: #fff3cd; border-left: 5px solid #ffa500;
+      padding: 0.7em 1em; margin: 1em 0; font-size: 10pt;
+    }
+    .summary-table, .check-table {
+      width: 100%; border-collapse: collapse; margin-top: 0.5em; margin-bottom: 1em;
+    }
+    .summary-table td, .summary-table th,
+    .check-table td, .check-table th {
+      border: 1px solid #ccc; padding: 6px 10px; text-align: left;
+    }
+    .check-table th { background: #f4f4f4; }
+    .pass { color: #1c7c54; font-weight: bold; }
+    .fail { color: #b03030; font-weight: bold; }
+    .warn { color: #b08020; font-weight: bold; }
+    .footer {
+      margin-top: 2em; padding-top: 0.5em; border-top: 1px solid #ccc;
+      font-size: 9pt; color: #555;
+    }
+    code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-size: 10pt; }
+    ul.fail-list { font-size: 10pt; }
+  </style>
+</head>
+<body>
+
+  <h1>Pré-vérification ConX</h1>
+  <p><strong>Fichier</strong> : <code>{{ filename }}</code><br>
+     <strong>Schéma IFC</strong> : {{ ifc_schema or '—' }}<br>
+     <strong>Entités</strong> : {{ n_entities }}<br>
+     <strong>Validation syntaxique</strong> :
+     {% if valid_syntax %}<span class="pass">✓ OK</span>
+     {% else %}<span class="fail">✗ ÉCHEC</span>{% endif %}<br>
+     <strong>Date</strong> : {{ generated_at }}
+  </p>
+
+  <div class="disclaimer">
+    ⚠ <strong>Pré-vérification ConX — ne remplace pas un bureau de contrôle agréé.</strong>
+    Le périmètre vérifié est étroit (10-15 contrôles sur ~200 qu'un BCT vérifie).
+    Cette pré-vérification aide les bureaux d'études et architectes à itérer
+    rapidement avant la remise au contrôleur technique.
+  </div>
+
+  {% if not valid_syntax %}
+    <h2>Erreur de parsing</h2>
+    <p class="fail">{{ error or 'Fichier IFC non parseable.' }}</p>
+    <p>Vérifier que le fichier est un IFC2x3, IFC4 ou IFC4.3 valide.</p>
+  {% else %}
+
+    <h2>Synthèse du modèle</h2>
+    <table class="summary-table">
+      <tr><th>Murs</th><td>{{ summary.n_walls }}</td>
+          <th>Portes</th><td>{{ summary.n_doors }}</td></tr>
+      <tr><th>Fenêtres</th><td>{{ summary.n_windows }}</td>
+          <th>Escaliers</th><td>{{ summary.n_stairs }}</td></tr>
+      <tr><th>Rampes</th><td>{{ summary.n_ramps }}</td>
+          <th>Espaces (IfcSpace)</th><td>{{ summary.n_spaces }}</td></tr>
+    </table>
+
+    <h2>Contrôles RE2020 (sous-ensemble MVP)</h2>
+    <table class="check-table">
+      <thead>
+        <tr><th>Contrôle</th><th>Résultat</th><th>Vérifiés</th><th>Échecs</th></tr>
+      </thead>
+      <tbody>
+      {% for key, c in re2020_checks.items() %}
+        <tr>
+          <td>{{ check_labels.get(key, key) }}</td>
+          <td>
+            {% if c.pass %}<span class="pass">✓ OK</span>
+            {% else %}<span class="fail">✗ {{ c.n_fail }} échec(s)</span>{% endif %}
+          </td>
+          <td>{{ c.n_checked or c.n_checked_external or 0 }}</td>
+          <td>{{ c.n_fail }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    {% for key, c in re2020_checks.items() %}
+      {% if c.details %}
+        <h3>{{ check_labels.get(key, key) }} — détail (max 10)</h3>
+        <ul class="fail-list">
+        {% for d in c.details %}
+          <li>
+            ID #{{ d.id }} (GlobalId <code>{{ d.GlobalId }}</code>) —
+            {% if d.Uw is defined %}U<sub>w</sub> = {{ '%.2f' | format(d.Uw) }} W/m².K{% endif %}
+            {% if d.R is defined %}R = {{ '%.2f' | format(d.R) }} m².K/W{% endif %}
+          </li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endfor %}
+
+    <h2>Contrôles PMR (sous-ensemble MVP)</h2>
+    <table class="check-table">
+      <thead>
+        <tr><th>Contrôle</th><th>Résultat</th><th>Vérifiés</th><th>Échecs</th></tr>
+      </thead>
+      <tbody>
+      {% for key, c in pmr_checks.items() %}
+        <tr>
+          <td>{{ check_labels.get(key, key) }}</td>
+          <td>
+            {% if c.pass %}<span class="pass">✓ OK</span>
+            {% else %}<span class="fail">✗ {{ c.n_fail }} échec(s)</span>{% endif %}
+          </td>
+          <td>{{ c.n_checked or 0 }}</td>
+          <td>{{ c.n_fail }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    {% for key, c in pmr_checks.items() %}
+      {% if c.details %}
+        <h3>{{ check_labels.get(key, key) }} — détail (max 10)</h3>
+        <ul class="fail-list">
+        {% for d in c.details %}
+          <li>
+            ID #{{ d.id }} (GlobalId <code>{{ d.GlobalId }}</code>) —
+            {% if d.OverallWidth_m is defined %}Largeur {{ '%.2f' | format(d.OverallWidth_m) }} m{% endif %}
+            {% if d.slope_pct is defined %}Pente {{ '%.1f' | format(d.slope_pct) }} %{% endif %}
+          </li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endfor %}
+
+    {% if anomalies %}
+      <h2>Anomalies générales</h2>
+      <ul class="fail-list">
+        {% for a in anomalies %}<li>{{ a }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+
+  {% endif %}
+
+  <div class="footer">
+    Pré-vérification générée par ConX (CD2E × EuraTechnologies).
+    Sources : NF P 99-611, arrêté du 8 décembre 2014, RE2020 (décret 2021-1004).
+    Données IFC traitées localement, jamais envoyées à un tiers.
+  </div>
+
+</body>
+</html>

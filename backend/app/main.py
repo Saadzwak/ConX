@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .db import lifespan
-from .routers import agents, buildings, exports, internal, meta
+from .routers import agents, buildings, exports, ifc, internal, meta
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -25,10 +25,10 @@ logging.basicConfig(
 
 app = FastAPI(
     title="ConX API",
-    version="0.12.0-j12",
+    version="0.13.0-j13",
     description=(
         "Plateforme IA pour la rénovation énergétique hors-site (Hauts-de-France). "
-        "J12 : Mode Stratégie + Mode Projet (chat itératif Agent Plan via SSE)."
+        "J13 : Mode Stratégie + Mode Projet (SSE) + Mode Conformité (IFC + PDF)."
     ),
     lifespan=lifespan,
 )
@@ -66,3 +66,4 @@ app.include_router(exports.router)
 app.include_router(internal.router)
 app.include_router(meta.router)
 app.include_router(agents.router)
+app.include_router(ifc.router)

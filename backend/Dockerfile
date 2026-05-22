@@ -7,10 +7,21 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Dépendances système pour PostGIS client + IFC (à étoffer plus tard avec libgl/libgomp pour ifcopenshell J9)
+# Dépendances système :
+#   - build-essential / curl : base
+#   - libgl1 / libgomp1 : runtime IfcOpenShell C++ (test J9 OK avec ces deux libs)
+#   - libpango-1.0-0 + libpangoft2-1.0-0 + libcairo2 + libffi-dev + shared-mime-info :
+#     runtime WeasyPrint (rendu PDF)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
+    libgl1 \
+    libgomp1 \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libcairo2 \
+    libffi-dev \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

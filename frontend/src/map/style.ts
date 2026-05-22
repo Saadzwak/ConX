@@ -56,12 +56,23 @@ export const HDF_BOUNDS: [[number, number], [number, number]] = [
   [4.3, 51.1], // NE
 ];
 
-// Lille / Vieux-Lille atterrissage final pour la démo
+// Vieux-Lille (vedette FALLBACK D-023) — copro 1930, R+3, 17 logts G
 export const VIEUX_LILLE_VIEW = {
   longitude: 3.066,
   latitude: 50.6446,
   zoom: 16,
 };
+
+// Wazemmes (vedette PRINCIPAL D-023) — bailleur social 1978 R+3 48 logts F
+export const WAZEMMES_VIEW = {
+  longitude: 3.0467,
+  latitude: 50.6243,
+  zoom: 17,
+};
+
+// Bâtiment vedette principal (atterrissage Mode Projet par défaut)
+export const VEDETTE_BUILDING_ID = "bdnb-bg-81UB-UTZE-ZP7F";
+export const VEDETTE_FALLBACK_BUILDING_ID = "bdnb-bg-JBP7-PFQL-4T69";
 
 export const HDF_VIEW = {
   longitude: 2.85,

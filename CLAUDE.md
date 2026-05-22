@@ -371,6 +371,8 @@ Tu ne décides JAMAIS seul sur :
 | ~~B-003~~ | ~~Accès API INIES~~ | RESOLU 2026-05-21 | — (cf. D-014) |
 | B-004 | Hébergement applicatif final | MINEUR | J19 (arbitrage partenaire) |
 | ~~SUP~~ | ~~Supabase migration RLS~~ | RESOLU 2026-05-22 | Schema `app` créé via PAT, RLS roundtrip OK (4 tables isolées par user_id). |
+| B-011 | Arbitrage LiDAR HD post-test live | MINEUR | Après test live partenaire (BD TOPO suffit ou pas) |
+| B-012 | Auth EventSource SSE (cookie ou polyfill) | MINEUR | Post-concours hardening prod |
 
 ---
 

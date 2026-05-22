@@ -33,6 +33,11 @@ build/
 # Data (sources & generated artifacts)
 data/
 !data/.gitkeep
+# Note : les assets démo sont désormais committés sous docs/demo_assets/
+# (cached_plans/ + ifc/) pour qu'un checkout frais ait le cache prêt sans
+# avoir à relancer Anthropic (~2 €) ni ifcopenshell. Les scripts
+# precalc_plans.py et create_demo_ifc.py écrivent maintenant directement
+# dans docs/demo_assets/.
 *.laz
 *.las
 *.gpkg

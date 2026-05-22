@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useState } from "react";
-import { Download, FileSpreadsheet } from "lucide-react";
+import { Download, FileSpreadsheet, Target } from "lucide-react";
 
 import { StrategieMap } from "@/map/StrategieMap";
 import { FiltersPanel, type Filters } from "@/components/FiltersPanel";
@@ -18,6 +18,7 @@ import { BuildingDrawer } from "@/components/BuildingDrawer";
 import { SearchBar } from "@/components/SearchBar";
 import { Button } from "@/components/ui/button";
 import { type BuildingListItem, exportUrl } from "@/lib/api";
+import { WAZEMMES_VIEW } from "@/map/style";
 
 export function StrategiePage() {
   const [filters, setFilters] = useState<Filters>({
@@ -75,6 +76,25 @@ export function StrategiePage() {
             <span className="text-xs text-muted-foreground bg-card/95 px-2 py-1 rounded border">
               z={zoom.toFixed(1)}
             </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent("conx:flyto", {
+                    detail: {
+                      lon: WAZEMMES_VIEW.longitude,
+                      lat: WAZEMMES_VIEW.latitude,
+                      zoom: WAZEMMES_VIEW.zoom,
+                    },
+                  }),
+                )
+              }
+              title="Vol direct vers le bâtiment vedette démo (D-023)"
+            >
+              <Target className="h-4 w-4 mr-1" />
+              Wazemmes
+            </Button>
             <Button size="sm" variant="outline" asChild>
               <a href={exportUrl("csv", exportParams)} download>
                 <FileSpreadsheet className="h-4 w-4 mr-1" />

@@ -33,12 +33,24 @@ function EmptyProjet() {
         Sélectionnez un bâtiment depuis la carte Stratégie pour ouvrir sa fiche,
         générer un plan rénovation IA et explorer la 3D.
       </p>
-      <Button asChild>
-        <Link to="/strategie">
-          <Building2 className="h-4 w-4 mr-2" />
-          Ouvrir la carte
-        </Link>
-      </Button>
+      <div className="flex gap-2 flex-wrap">
+        <Button asChild>
+          <Link to="/strategie">
+            <Building2 className="h-4 w-4 mr-2" />
+            Ouvrir la carte
+          </Link>
+        </Button>
+        <Button variant="outline" asChild>
+          <Link to="/projet/bdnb-bg-81UB-UTZE-ZP7F">
+            Démo Wazemmes (vedette)
+          </Link>
+        </Button>
+        <Button variant="ghost" asChild>
+          <Link to="/projet/bdnb-bg-JBP7-PFQL-4T69">
+            Démo Vieux-Lille (fallback)
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }

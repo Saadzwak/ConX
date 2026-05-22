@@ -696,3 +696,58 @@ async def plan_history(
     return PlanHistoryResponse(session_id=session_id, versions=versions)
 
 
+# ---------------------------------------------------------------------------
+# GET /api/agents/plan/cached/{building_id}/{version}  — fallback démo offline
+# ---------------------------------------------------------------------------
+
+
+@router.get("/plan/cached/{building_id}/{version}")
+async def get_cached_plan(building_id: str, version: int) -> dict[str, Any]:
+    """Sert un plan pré-calculé depuis le cache local.
+
+    Cherche dans cet ordre :
+      1. `/app/docs/demo_assets/cached_plans/` (committé en repo, dispo en démo)
+      2. `/app/data/storage/cached_plans/` (volume Docker, généré par precalc_plans.py)
+      3. `<repo>/docs/demo_assets/cached_plans/` (fallback dev sans Docker)
+      4. `<repo>/data/storage/cached_plans/` (fallback dev sans Docker)
+
+    Endpoint volontairement non-authentifié pour permettre la démo offline si
+    l'API Anthropic est inaccessible — les caches contiennent uniquement des
+    plans pour les bâtiments vedette publics (D-022/D-023), pas de données
+    utilisateur sensibles.
+
+    Retourne `{plan_text, generated_at, session_id, ...}` ou 404 si absent.
+    """
+    from pathlib import Path
+
+    # Sanitization basique : pas de slash ni de ..
+    if "/" in building_id or ".." in building_id or "/" in str(version):
+        raise HTTPException(status_code=400, detail="ID ou version invalide.")
+
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    candidates = [
+        Path("/app/docs/demo_assets/cached_plans"),
+        Path("/app/data/storage/cached_plans"),
+        repo_root / "docs" / "demo_assets" / "cached_plans",
+        repo_root / "data" / "storage" / "cached_plans",
+    ]
+
+    filename = f"{building_id}_v{version}.json"
+    cache_file: Path | None = None
+    for cand in candidates:
+        candidate_file = cand / filename
+        if candidate_file.exists():
+            cache_file = candidate_file
+            break
+
+    if cache_file is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Plan en cache absent : {building_id} v{version}",
+        )
+    try:
+        return json.loads(cache_file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Cache illisible : {exc}") from exc
+
+

@@ -204,6 +204,35 @@ export async function sendPlanMessage(
   );
 }
 
+export interface CachedPlanResponse {
+  target_key?: string;
+  building_id: string;
+  version: number;
+  session_id: string;
+  plan_text: string;
+  generated_at: string;
+  label?: string;
+}
+
+/** Tente de récupérer un plan pré-calculé. Retourne null si absent. */
+export async function getCachedPlan(
+  buildingId: string,
+  version: number,
+): Promise<CachedPlanResponse | null> {
+  try {
+    const headers = await authHeaders();
+    const resp = await fetch(
+      `${API_BASE}/agents/plan/cached/${encodeURIComponent(buildingId)}/${version}`,
+      { headers },
+    );
+    if (resp.status === 404) return null;
+    if (!resp.ok) return null;
+    return (await resp.json()) as CachedPlanResponse;
+  } catch {
+    return null;
+  }
+}
+
 /** URL SSE pour `EventSource`. L'auth est portée par cookies/JWT du domaine. */
 export function planStreamUrl(sessionId: string, after?: string): string {
   const params = new URLSearchParams();

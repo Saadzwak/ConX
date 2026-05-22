@@ -111,7 +111,7 @@ def _persist_validation(
         )
         return
     sb = supabase_for_user(user)
-    sb.table("ifc_validations").insert(
+    sb.schema("app").table("ifc_validations").insert(
         {
             "id": validation_id,
             "user_id": user.user_id,
@@ -229,7 +229,7 @@ async def download_pdf(
     if is_supabase_configured():
         sb = supabase_for_user(user)
         res = (
-            sb.table("ifc_validations")
+            sb.schema("app").table("ifc_validations")
             .select("rapport_pdf_path_local, ifc_filename")
             .eq("id", validation_id)
             .limit(1)
@@ -270,7 +270,7 @@ async def list_validations(
         return []
     sb = supabase_for_user(user)
     res = (
-        sb.table("ifc_validations")
+        sb.schema("app").table("ifc_validations")
         .select("id, ifc_filename, re2020_pass, pmr_pass, created_at")
         .order("created_at", desc=True)
         .limit(50)

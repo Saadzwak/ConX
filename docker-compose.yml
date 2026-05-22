@@ -47,6 +47,7 @@ services:
       - ./config:/app/config:ro
       - ./skills:/app/skills:ro          # J13 — backend/app/ifc/validator.py importe skills/ifc-check/ifc_validator.py
       - ./agents:/app/agents:ro          # J12+ — agents_client.py lit agents/agents.lock.yaml (created by sync.py)
+      - ./docs:/app/docs:ro              # J15 — endpoint /api/agents/plan/cached lit docs/demo_assets/cached_plans/ (committé)
     depends_on:
       postgres_local:
         condition: service_healthy

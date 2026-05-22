@@ -729,3 +729,52 @@ Pour Vieux-Lille, **aucun bailleur social** ne match les critères stricts (F/G 
 | Vedette PRINCIPAL | Vieux-Lille | Candidat B | `bdnb-bg-JBP7-PFQL-4T69` | 91.1 | 714 | Copro privée | G |
 | Vedette FALLBACK | Wazemmes | top-1 | `bdnb-bg-81UB-UTZE-ZP7F` | 96.1 | 1727 | Bailleur social | F |
 | Quartier PLAN C | Lens centre | (à identifier J22) | — | — | — | — | — |
+
+
+## D-023 — Bascule Wazemmes en quartier vedette PRINCIPAL, Vieux-Lille en fallback
+
+**Date** : 2026-05-22 (vague PM)
+**Statut** : DÉCIDÉ par le partenaire
+
+### Contexte
+D-022 avait positionné Vieux-Lille candidat B comme vedette principal et Wazemmes comme fallback. Après identification effective du bâtiment Wazemmes (`bdnb-bg-81UB-UTZE-ZP7F`), les chiffres ont rendu la décision évidente :
+
+| Critère | Wazemmes vedette | Vieux-Lille candidat B |
+|---|---|---|
+| ID BDNB | `bdnb-bg-81UB-UTZE-ZP7F` | `bdnb-bg-JBP7-PFQL-4T69` |
+| Type propriétaire | **Bailleur social** | Copro privée |
+| DPE | F (324 kWh/m²/an, ADEME) | G (540 kWh/m²/an, ADEME) |
+| Nb logements | **48** | 17 |
+| Année | 1978 | 1930 |
+| Score ConX | **96.1/100** | 91.1/100 |
+| CO₂ évité (30 ans) | **1 727 tCO₂** | 714 tCO₂ |
+| Coût estimé | 650 k€ | 140 k€ |
+
+### Décision
+
+**Bascule des rôles** :
+- **Quartier vedette PRINCIPAL** : **Wazemmes** (Lille, 59), bbox `(3.040, 50.620) — (3.070, 50.636)`, bâtiment `bdnb-bg-81UB-UTZE-ZP7F`. Le pitch jury atterrit ici.
+- **Quartier vedette FALLBACK** : Vieux-Lille (Lille, 59), bâtiment `bdnb-bg-JBP7-PFQL-4T69` (candidat B). À activer si Wazemmes pose un problème pendant la démo.
+- **Quartier PLAN C** : Lens centre (62), terrain inconnu — dernier recours uniquement.
+
+### Argumentaire chiffré
+1. **+1 013 tCO₂ évitées** (1727 − 714) = effet de levier x 2,4 — l'argument carbone est plus impressionnant.
+2. **Bailleur social = narratif jury plus fort** : la rénovation des passoires des bailleurs sociaux est un objectif POPH (Plan Pluriannuel de Rénovation des Logements Sociaux) explicite + un sujet jury récurrent (financements ANRU, subventions Région HDF). Une copro privée raconte un autre récit (intéressant, mais plus minoritaire dans le débat public).
+3. **Score 96.1/100** > **91.1** = "plus de 9 5/100 selon notre indice" est citable directement par le pitch.
+4. **48 logements** vs 17 = densité d'impact x ~3, narratif "une opération = un immeuble entier rénové".
+5. **Année 1978** : générique d'une vague de construction massive (HLM années 70 → reproductible sur des milliers de bâtiments similaires en HDF). 1930 = beaucoup plus daté, moins réplicable.
+
+### Conséquences sur le plan
+
+- **Pré-warmup MVT Wazemmes** : zoom 11-18 (1845 tiles servies en 4.6 s par martin) ✓ fait.
+- **Pré-calcul plans IA** : Wazemmes v1 (référence) + Wazemmes v2 (variation chanvre) + Vieux-Lille v1 (fallback) → cache local + Supabase.
+- **DEMO_SCRIPT.md** : pitch atterrit sur Wazemmes (le chat itératif "plutôt chanvre" devient le wow moment 1:45-3:45).
+- **Frontend** : par défaut, le bouton "Ouvrir Mode Projet" en bas de la sidebar Stratégie pointe vers le bâtiment vedette du moment. À paramétrer dans un fichier de config démo.
+
+### Liste démo finale (référence unique — révision D-022)
+
+| Rôle | Quartier | Bâtiment | ID | Score | tCO₂ | Propriétaire | DPE |
+|---|---|---|---|---|---|---|---|
+| **Vedette PRINCIPAL** | **Wazemmes** | top-1 | `bdnb-bg-81UB-UTZE-ZP7F` | **96.1** | **1727** | **Bailleur social** | F |
+| Vedette FALLBACK | Vieux-Lille | candidat B | `bdnb-bg-JBP7-PFQL-4T69` | 91.1 | 714 | Copro privée | G |
+| Quartier PLAN C | Lens centre | (à identifier J22) | — | — | — | — | — |

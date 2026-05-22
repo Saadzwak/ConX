@@ -1190,3 +1190,80 @@ Métriques retenues pour la doc et le pitch jury :
 - TTL test wait_min=10 net (patched) : ~0.6 €
 - Total : **~1.5 €** sur le cap 10 € accordé.
 
+
+---
+
+## 2026-05-22 — Session 15 (Wazemmes principal + précalc plans IA + DEMO_SCRIPT + IFC test)
+
+**Durée** : ~1h après commit `52cb17d`
+**Tokens** : modéré
+**Coût Anthropic** : ~1.5-2 € (3 plans IA pré-calculés)
+**Statut** : LIVRÉ (à commit après advisor)
+
+### Livré
+
+**1. D-023 — Bascule Wazemmes principal / Vieux-Lille fallback**
+- Argumentaire chiffré : +1013 tCO₂ vs VL (1727 vs 714), 48 logts vs 17, score 96.1 vs 91.1, bailleur social narratif jury fort vs copro privée.
+- `DECISIONS.md` : nouveau D-023 avec table comparative + liste démo finale (référence unique).
+- Frontend : `WAZEMMES_VIEW` + constantes `VEDETTE_BUILDING_ID` ajoutées dans `src/map/style.ts`.
+- Stratégie : bouton overlay "Wazemmes" (cible) pour vol direct.
+- Projet placeholder : 2 boutons "Démo Wazemmes (vedette)" + "Démo Vieux-Lille (fallback)".
+
+**2. Précalc plans IA en cache** (`scripts/precalc_plans.py`)
+- Génère 3 plans via l'agent `conx-plan` :
+  - **Wazemmes v1** (référence) : 8286 chars, session `sesn_018khW6JVed5PR1iz4pi3eSK`
+  - **Wazemmes v2** (variation chanvre) : 9969 chars, session `sesn_018MfWV46thZZfFQK1LfNnyQ`
+  - **Vieux-Lille v1** (fallback) : session `sesn_01XEaey8bUuTSxhfuKTf1AJ9` (cours)
+- Double cache : `data/storage/cached_plans/<building_id>_v<n>.json` (local, lookup demo) + `app.renovation_plans` (Supabase via service_role).
+- Endpoint backend `GET /api/agents/plan/cached/:bid/:v` non-authentifié (lookup démo).
+- Coût ~1.5-2 € sur cap 5.5 € restant.
+
+**3. Pre-warm MVT Wazemmes**
+- `scripts/prewarm_vl_tiles.py` étendu `--quartier {vieux-lille, wazemmes}`.
+- Wazemmes zoom 11-18 : **1845 tiles servies en 4.6 s** par martin (3 layers).
+
+**4. DEMO_SCRIPT.md** (`docs/DEMO_SCRIPT.md`, ~12 KB)
+- Découpage chronométré strict des 5 minutes (acte 0 titre / acte 1 méthode / acte 2 stratégie / acte 3 Mode Projet Wazemmes / acte 4 IFC / acte 5 closing).
+- Fallbacks codifiés étape par étape : plan IA > 90 s → cache, Anthropic down → cache auto, chat v2 plante → cache v2, Wazemmes plante → VL fallback, tout Lille plante → Lens centre, IFC upload échoue → PDF préchargé.
+- Latences cibles vs acceptables par étape.
+- Checklist pré-démo 30 min avant le pitch (services, ngrok, caches, assets, warm).
+- Plans B/C référencés (D-023).
+- 8 phrases-clés mémorisables citables.
+- 5 questions probables du jury anticipées (fiabilité chiffres, Claude vs FR, données à jour, RGPD).
+
+**5. IFC test représentatif** (`scripts/create_demo_ifc.py`)
+- Génère `data/storage/demo_assets/test_re2020_pmr_fail.ifc` (10.4 KB) via ifcopenshell dans le container backend.
+- Structure : 12 murs (8 ext avec R_iso conformes), 4 portes (3 OK + **1 Porte WC à 0.82 m < seuil 0.90 m PMR**), 8 fenêtres (Uw 1.1-1.25 toutes OK), 3 spaces.
+- Validation testée live : **RE2020 PASS, PMR FAIL** (1 fail détecté sur porte WC). Schéma IFC4, 4 entités principales.
+- PDF rapport sample `data/storage/demo_assets/sample_ifc_report.pdf` (20 KB) généré comme fallback démo.
+
+**6. Fallback cache UI dans PlanChat**
+- Bouton "Utiliser le plan pré-calculé" disponible avant génération.
+- Timer 90 s : si la génération dépasse, bandeau ambre apparaît avec bouton "Charger cache".
+- Bascule silencieuse vers cache si `startPlanSession` plante (Anthropic down).
+- Badge "cache" affiché sur les versions chargées depuis le cache.
+
+**7. Fix schéma Supabase IFC**
+- `backend/app/routers/ifc.py` : `sb.table("ifc_validations")` → `sb.schema("app").table("ifc_validations")` (3 occurrences). Bug pré-existant des sessions précédentes, découvert au test live upload IFC.
+
+### Bloqueurs ouverts (mis à jour)
+- **B-011** (LiDAR HD post-test live) : OUVERT — décision après que le partenaire ait testé l'extrusion BD TOPO en live.
+- **B-012** (EventSource auth prod) : OUVERT — différé post-concours, dev bypass actif pour la démo.
+
+### URLs locales (toujours actives)
+- Frontend dev : http://localhost:5173/
+- Backend : http://localhost:8000/api/health
+- Cache plan : http://localhost:8000/api/agents/plan/cached/bdnb-bg-81UB-UTZE-ZP7F/1
+- Building Wazemmes : http://localhost:8000/api/buildings/bdnb-bg-81UB-UTZE-ZP7F
+- Martin tiles : http://localhost:3000/catalog
+- Mode Projet vedette : http://localhost:5173/projet/bdnb-bg-81UB-UTZE-ZP7F
+
+### Coût Anthropic cumulé session
+- TTL smoke + 2 TTL 10 min : ~1.5 €
+- Précalc 3 plans : ~1.5-2 €
+- Total **~3-3.5 €** sur le cap 10 €. **6.5-7 € de marge restante**.
+
+### Prochaine étape
+- Partenaire teste la plateforme en live (Wazemmes Mode Projet + chat itératif + IFC).
+- Selon retour : LiDAR HD à activer ou pas.
+

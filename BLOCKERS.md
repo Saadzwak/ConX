@@ -553,3 +553,48 @@ le backend soit accessible depuis l'agent (ngrok tunnel, cf. D-013).
 - Upload Anthropic différé (B-009 + B-010 à résoudre ensemble en J10).
 - Les agents Sélection/Conformité (qui n'utilisent pas carbon-calc directement)
   peuvent être créés en premier.
+
+
+## B-011 — Arbitrage LiDAR HD post-test live partenaire
+
+**Date d'ouverture** : 2026-05-22 (vague PM)
+**Statut** : OUVERT — décision après test live partenaire
+**Sévérité** : MINEUR
+**Jalon impacté** : J22 polish ou post-concours
+
+### Contexte
+Le pipeline LiDAR HD IGN (download dalles + extraction nuage de points + conversion glTF via PDAL + py3dtiles) n'a pas été implémenté pour les 2 bâtiments vedettes (Wazemmes `bdnb-bg-81UB-UTZE-ZP7F` + Vieux-Lille `bdnb-bg-JBP7-PFQL-4T69`). Le coût (~2-3 Go × 2 dalles + temps de download + setup PDAL/OpenCASCADE) dépasse le budget temps de la dernière vague.
+
+Le fallback en place — **extrusion BD TOPO** via `hauteur_m` × emprise BDNB + voisins en MVTLayer — est visuellement crédible (pitch 50°, bearing -20°, couleur classe DPE).
+
+### Décision attendue
+Après que le partenaire ait testé la plateforme en live et apprécié visuellement l'extrusion BD TOPO :
+- **Option A** : extrusion BD TOPO suffit pour le pitch → on garde tel quel, LiDAR différé post-concours.
+- **Option B** : besoin d'un mesh photo-réaliste pour le pitch → action partenaire (download manuel des 2 dalles via https://geoservices.ign.fr/lidarhd dans `./data/storage/lidar/`) + je code le pipeline conversion glTF en ~30-60 min.
+
+### Notes techniques
+- Dalles VL : `0704_7060`, `0704_7061`, `0705_7060`, `0705_7061` (cf. `docs/LIDAR_VIEUX_LILLE.md`).
+- Dalles Wazemmes : à identifier par centroïde (3.0467, 50.6243) ↔ Lambert-93 → coin SO km. À faire si Option B.
+- Outils : `pdal pipeline filter.crop.bbox + writers.gltf` ou `py3dtiles convert --type=glb`.
+
+
+## B-012 — Auth EventSource pour SSE (hardening prod)
+
+**Date d'ouverture** : 2026-05-22 (vague PM)
+**Statut** : OUVERT — différé post-concours
+**Sévérité** : MINEUR (hardening prod, pas bloquant démo)
+**Jalon impacté** : J19+ ou post-concours
+
+### Contexte
+Le navigateur API `EventSource` (utilisée par `frontend/src/components/PlanChat.tsx` pour consommer le SSE `/api/agents/plan/:sid/stream`) ne supporte PAS l'envoi d'un header `Authorization: Bearer <jwt>` custom. Cela signifie que en mode prod (sans `CONX_DEV_BYPASS_AUTH`), le stream SSE échouera avec 401 puisque le JWT Supabase ne peut pas être propagé via le mécanisme standard.
+
+### Workarounds pour prod
+1. **Cookie de session HttpOnly** : le backend pose un cookie `conx_jwt=...` après login, `EventSource` propage les cookies de même origine.
+2. **Token via query parameter** : `?jwt=<token>` propagé sur l'URL. Inconvénient : le JWT apparaît dans les logs serveur. Atténuation : token éphémère (5 min) signé spécifiquement pour SSE.
+3. **Polyfill `fetch-event-source`** (`@microsoft/fetch-event-source`) : supporte des headers custom mais nécessite un fallback côté backend.
+
+### Décision actuelle
+**Différé post-concours** (décision partenaire 2026-05-22 PM). La démo tourne en local avec `CONX_DEV_BYPASS_AUTH=1` actif, le partenaire projette son écran (pas de partage d'URL publique). L'effet streaming SSE token-par-token est conservé — c'est le wow moment du Mode Projet.
+
+### Décision attendue (post-concours)
+Choisir option 1 ou 3 (option 2 trop fragile). Probablement option 1 (cookie HttpOnly) pour rester simple et standard.

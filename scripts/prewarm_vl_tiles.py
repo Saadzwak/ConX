@@ -28,6 +28,16 @@ from urllib.error import HTTPError, URLError
 VL_LON_MIN, VL_LAT_MIN = 3.057, 50.640
 VL_LON_MAX, VL_LAT_MAX = 3.075, 50.652
 
+# Wazemmes bbox WGS84 (D-022 — quartier vedette principal depuis 2026-05-22 PM)
+WAZEMMES_LON_MIN, WAZEMMES_LAT_MIN = 3.040, 50.620
+WAZEMMES_LON_MAX, WAZEMMES_LAT_MAX = 3.070, 50.636
+
+# Quartier par défaut (peut être passé via --quartier)
+QUARTIERS = {
+    "vieux-lille": (VL_LON_MIN, VL_LAT_MIN, VL_LON_MAX, VL_LAT_MAX),
+    "wazemmes": (WAZEMMES_LON_MIN, WAZEMMES_LAT_MIN, WAZEMMES_LON_MAX, WAZEMMES_LAT_MAX),
+}
+
 MARTIN_BASE = "http://localhost:3000"
 DEFAULT_LAYERS = ["buildings_mv", "topo_buildings", "commune_passoires_heatmap_mv"]
 DEFAULT_ZOOMS = list(range(14, 19))
@@ -45,9 +55,10 @@ def deg2num(lat: float, lon: float, zoom: int) -> tuple[int, int]:
     return x, y
 
 
-def tile_range(zoom: int) -> tuple[range, range]:
-    x_min, y_min = deg2num(VL_LAT_MAX, VL_LON_MIN, zoom)
-    x_max, y_max = deg2num(VL_LAT_MIN, VL_LON_MAX, zoom)
+def tile_range(zoom: int, bbox: tuple[float, float, float, float]) -> tuple[range, range]:
+    lon_min, lat_min, lon_max, lat_max = bbox
+    x_min, y_min = deg2num(lat_max, lon_min, zoom)
+    x_max, y_max = deg2num(lat_min, lon_max, zoom)
     return range(x_min, x_max + 1), range(y_min, y_max + 1)
 
 
@@ -71,16 +82,25 @@ def main() -> int:
                         help="liste de layers martin séparés par ',' (def buildings_mv,topo_buildings,commune_passoires_heatmap_mv)")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--dry-run", action="store_true", help="liste les URLs sans requeter")
+    parser.add_argument(
+        "--quartier",
+        default="vieux-lille",
+        choices=list(QUARTIERS.keys()),
+        help="Quartier à pré-warmer (def vieux-lille). D-022 : Wazemmes = vedette principal.",
+    )
     args = parser.parse_args()
 
     zooms = [int(z) for z in args.zooms.split(",") if z.strip()]
     layers = [l.strip() for l in args.layers.split(",") if l.strip()]
+    bbox = QUARTIERS[args.quartier]
+    logger.info("Quartier : %s (bbox lon[%s..%s] lat[%s..%s])",
+                args.quartier, bbox[0], bbox[2], bbox[1], bbox[3])
 
     # 1. Plan des requêtes
     tasks = []
     for layer in layers:
         for z in zooms:
-            xs, ys = tile_range(z)
+            xs, ys = tile_range(z, bbox)
             for x in xs:
                 for y in ys:
                     tasks.append((layer, z, x, y))

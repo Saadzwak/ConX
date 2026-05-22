@@ -136,10 +136,17 @@ def compute_neighborhood_predict(conn: psycopg.Connection, k: int = 20) -> None:
 def fetch_batch(
     conn: psycopg.Connection,
     dept_filter: str | None,
-    offset: int,
+    offset: int,  # conservé pour compat API mais NON utilisé (cf. note ci-dessous)
     limit: int,
 ) -> list[dict]:
-    """Charge un batch de bâtiments SANS DPE, avec features + neighborhood predict."""
+    """Charge un batch de bâtiments SANS DPE, avec features + neighborhood predict.
+
+    ⚠ FIX bug post-run 1 : pas d'OFFSET. Le `WHERE dpe_classe IS NULL` est dynamique
+    (l'UPDATE buildings du batch précédent rétrécit naturellement le set restant).
+    Si on utilisait OFFSET, on sautait des rows déjà UPDATE → le 1er run a couvert
+    seulement 50% des bâtiments. Le cursor implicite via ORDER BY + IS NULL suffit.
+    """
+    _ = offset  # silencieux : argument ignoré
     sql = """
     SELECT
         b.building_id, b.dept, b.code_commune_insee,
@@ -158,8 +165,8 @@ def fetch_batch(
     if dept_filter is not None:
         sql += " AND b.dept = %s"
         params.append(dept_filter)
-    sql += " ORDER BY b.building_id OFFSET %s LIMIT %s;"
-    params.extend([offset, limit])
+    sql += " ORDER BY b.building_id LIMIT %s;"
+    params.append(limit)
 
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(sql, params)

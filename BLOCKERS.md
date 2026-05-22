@@ -440,3 +440,88 @@ et échoue avec un message clair sinon. Plus de valeur par défaut hasardeuse.
 - L'extrusion BD TOPO (J7 `tiles.buildings_mv.hauteur_m`) couvre l'affichage 3D
   fallback Mode Stratégie. Mode Projet Three.js sera fallback "BD TOPO + ortho"
   jusqu'à pré-gen LiDAR effective.
+
+---
+
+## B-009 — Upload Skills Anthropic (validation dépense partenaire)
+
+**Date d'ouverture** : 2026-05-22
+**Sévérité** : MINEUR (coût attendu < 1 €, mais règle §9.D = validation explicite)
+**Pour quand** : J10 (avant création des Managed Agents qui référencent les skills)
+
+### Contexte
+Les 6 Skills ConX sont créées sur disque (`skills/`) :
+- carbon-calc, fdes-lookup, ifc-check, horssite-biosource, re2020-target, pmr-checks
+- Test critique ifcopenshell validé (0.8.5 OK dans python:3.12-slim)
+- Procédure d'upload documentée dans `docs/SKILLS.md` §5
+
+L'upload via `client.beta.skills.create(zip_file=...)` requiert :
+- Une connexion authentifiée à l'API Anthropic.
+- Le beta header `skills-2025-10-02`.
+- Très peu de coût (stockage uniquement).
+
+### Décision attendue
+Partenaire valide l'upload. Une fois validé :
+1. Le partenaire (ou ConX avec son accord) exécute le script d'upload (cf. docs/SKILLS.md §5).
+2. Les `skill_id` retournés sont stockés dans un fichier `agents/skills.yaml`.
+3. En J10, les 3 Managed Agents sont créés avec ces `skill_id` dans leur config.
+
+### En attendant
+- Skills sont prêtes côté disque, leur logique est testable localement sans Anthropic.
+- Les Managed Agents J10 ne peuvent pas être créés tant que les skills ne sont pas
+  uploadées (un agent référence ses skills par ID).
+- Workaround si bloquant : J11 backend peut utiliser les Skills en mode local
+  (exécuter `python skills/carbon-calc/carbon_calc.py ...` directement) sans passer
+  par Managed Agents — mais on perd le storytelling "agent IA orchestré".
+
+---
+
+## B-010 — Bundle skills Anthropic : carbon-calc + fdes-lookup ne sont pas self-contained
+
+**Date d'ouverture** : 2026-05-22
+**Sévérité** : MINEUR (les skills marchent en dev local ; à fixer avant upload Anthropic)
+**Pour quand** : J10 (avant `client.beta.skills.create()`)
+
+### Contexte
+La skill `carbon-calc` (`skills/carbon-calc/carbon_calc.py`) importe `from app.carbon`
+qui résout via `PYTHONPATH=backend` en dev local. Quand uploadée sur Anthropic, le zip
+ne contient PAS `backend/app/carbon/`. → ImportError au runtime sandbox.
+
+Idem `fdes-lookup/lookup.py` cherche `data/fdes_static.json` au repo root via
+`parents[2]` — chemin non-disponible dans le sandbox Anthropic.
+
+### Workaround partiel (déjà en place)
+- `references/fdes_static.json` est COPIÉ dans `skills/fdes-lookup/references/` et
+  `skills/carbon-calc/references/`. `lookup.py` cherche d'abord en `references/` puis
+  fallback repo root → OK dans le sandbox.
+- `carbon_calc.py` ne marche PAS sans `backend/app/carbon` accessible.
+
+### Fix à appliquer en J10 (2 options)
+
+**Option A — Aplatir le bundle (recommandé)** :
+```
+skills/carbon-calc/
+  SKILL.md
+  carbon_calc.py
+  _lib/
+    factors.py
+    exploitation.py
+    incorpore.py
+    evite_horssite.py
+    total.py
+  references/fdes_static.json
+```
+Et adapter `carbon_calc.py` : `from _lib import compute_total` au lieu de `from app.carbon import ...`.
+~30 min de refactor + script `scripts/sync_skill_bundle.py` pour automatiser la
+synchro depuis `backend/app/carbon/` → `skills/carbon-calc/_lib/`.
+
+**Option B — Endpoint HTTP backend** :
+La skill `carbon-calc` appelle une route `POST /api/internal/carbon/compute` du
+backend (cf. D-009 pour le pattern). Plus simple côté skill, mais nécessite que
+le backend soit accessible depuis l'agent (ngrok tunnel, cf. D-013).
+
+### En attendant
+- Skills définies sur disque, testées en dev local.
+- Upload Anthropic différé (B-009 + B-010 à résoudre ensemble en J10).
+- Les agents Sélection/Conformité (qui n'utilisent pas carbon-calc directement)
+  peuvent être créés en premier.

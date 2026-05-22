@@ -410,3 +410,33 @@ Soit :
 ### En attendant
 - Vérifier que `frontend/lib/api.ts` (J14) référence UNIQUEMENT les 3 sources matérialisées.
 - Documenter dans `docs/TILES_MVT.md` §3 (déjà fait).
+
+---
+
+## B-008 — URL CDN LiDAR HD IGN non vérifiée
+
+**Date d'ouverture** : 2026-05-22
+**Sévérité** : MINEUR (pas de download lancé pour le moment ; bloquant en J15 si non résolu)
+**Pour quand** : J15 (pré-génération 5-10 bâtiments démo)
+
+### Contexte
+`scripts/download_lidar.sh` est paramétrable et structurellement prêt, mais l'URL
+exacte du CDN LiDAR HD IGN a changé plusieurs fois entre 2022 et 2025
+(`entrepot-lidarhd-pcrs.ign.fr` → `diffusion-lidarhd.ign.fr` → Géoplateforme…).
+
+Le script a été corrigé en **fail-fast** : il **exige** `IGN_LIDAR_URL` dans `.env`
+et échoue avec un message clair sinon. Plus de valeur par défaut hasardeuse.
+
+### Action attendue (J15 hors-ligne)
+1. Visiter https://geoservices.ign.fr/lidarhd → trouver le lien de téléchargement
+   d'une dalle test.
+2. Inspecter l'URL effective (probablement un préfixe CDN + nom de dalle).
+3. Renseigner `IGN_LIDAR_URL=<URL_prefix>` dans `.env`.
+4. Lancer `scripts/download_lidar.sh --dalle <dalle_test>` pour valider.
+5. Pre-generation des 5-10 bâtiments démo.
+
+### En attendant
+- Pas de dalle téléchargée. `public_data.lidar_tiles` reste vide.
+- L'extrusion BD TOPO (J7 `tiles.buildings_mv.hauteur_m`) couvre l'affichage 3D
+  fallback Mode Stratégie. Mode Projet Three.js sera fallback "BD TOPO + ortho"
+  jusqu'à pré-gen LiDAR effective.

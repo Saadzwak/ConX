@@ -52,17 +52,182 @@ export interface GeoJsonMultiPolygon {
 }
 
 export interface BuildingDetail extends BuildingListItem {
-  materiau_mur?: string | null;
-  periode_construction?: string | null;
-  spr?: boolean | null;
-  acces_chantier_m?: number | null;
-  dpe_kg_co2_m2_an?: number | null;
-  dpe_coefficient_ep_electricite?: number | null;
+  // --- Identité étendue ---
   code_commune_insee?: string | null;
   code_iris?: string | null;
+  commune_nom?: string | null;
+  code_epci_insee?: string | null;
   bdnb_millesime?: string | null;
-  thresholds_version?: string | null;
+
+  // --- Adresse BAN ---
+  adresse_postale?: string | null;
+  cle_interop_ban?: string | null;
+
+  // --- Bâti ---
+  nb_niveaux_ffo?: number | null;
+  periode_construction?: string | null;
+  periode_thermique_reglementaire?: string | null;
+  materiau_mur?: string | null;
+  materiau_toiture?: string | null;
+  spr?: boolean | null;
+
+  // --- DPE base ---
+  classe_emission_ges?: string | null;
+  dpe_kg_co2_m2_an?: number | null;
+  dpe_coefficient_ep_electricite?: number | null;
+  identifiant_dpe_ademe?: string | null;
+  date_etablissement_dpe?: string | null;
+  date_reception_dpe?: string | null;
+  dpe_expire_le?: string | null;
+  shab_immeuble_m2?: number | null;
+
+  // --- Géom ---
   geom_geojson?: GeoJsonMultiPolygon | null;
+
+  // --- Score (à plat, fix PHASE 1.1) ---
+  thresholds_version?: string | null;
+  computed_at?: string | null;
+  incomplete_data?: boolean | null;
+  s_faisa_partial?: boolean | null;
+  missing_fields?: string[] | null;
+  cout_eur_par_t_co2?: number | null;
+  // Compat objet niché
+  score?: Record<string, unknown> | null;
+
+  // --- Voisinage ---
+  neighbors?: { building_id: string; dpe_classe: string | null; distance_m: number }[];
+
+  // --- QPV ---
+  dans_qpv?: boolean;
+  qpv_nom?: string | null;
+
+  // --- Réseau de chaleur ---
+  reseau_chaleur_id?: string | null;
+  reseau_chaleur_prioritaire?: boolean;
+  reseau_chaleur_distance?: string | null;
+
+  // --- Diagnostic technique ---
+  diagnostic_technique?: DiagnosticTechnique | null;
+
+  // --- RPLS ---
+  rpls?: RplsData | null;
+
+  // --- Conso réelle 7 ans ---
+  conso_reelle_annuelle?: ConsoAnnuelle[];
+
+  // --- Risques ---
+  risques?: { radon: string | null; argile: string | null; sismique: string | null };
+
+  // --- Urbanisme ---
+  urbanisme?: {
+    zone_ac1: boolean;
+    zone_plu_bati_patrimonial: boolean;
+    distance_monument_historique: number | null;
+    denomination_monument_historique: string | null;
+  };
+
+  // --- Fiabilité ---
+  fiabilite?: {
+    emprise_sol: string | null;
+    hauteur: string | null;
+    adresse: boolean | null;
+  };
+
+  // --- Accès chantier ---
+  acces_chantier?: {
+    score: number;
+    nearest_largeur_m: number | null;
+    nearest_distance_m: number | null;
+  } | null;
+
+  // --- Dérivés économiques ---
+  cout_energie_annuel_eur?: number | null;
+  cout_energie_30_ans_eur?: number | null;
+  emissions_totales_30_ans_t?: number | null;
+
+  // --- Aides ---
+  aides_eligibles?: AideEligible[];
+}
+
+export interface DiagnosticTechnique {
+  classe_emission_ges?: string | null;
+  type_installation_chauffage?: string | null;
+  type_energie_chauffage?: string | null;
+  type_generateur_chauffage?: string | null;
+  type_generateur_chauffage_anciennete?: string | null;
+  type_installation_ecs?: string | null;
+  type_energie_ecs?: string | null;
+  type_generateur_ecs?: string | null;
+  type_generateur_ecs_anciennete?: string | null;
+  type_ventilation?: string | null;
+  type_vitrage?: string | null;
+  type_materiaux_menuiserie?: string | null;
+  vitrage_vir?: boolean | null;
+  uw?: number | null;
+  type_isolation_mur_exterieur?: string | null;
+  materiaux_structure_mur_exterieur?: string | null;
+  epaisseur_structure_mur_exterieur?: string | null;
+  u_mur_exterieur?: number | null;
+  type_isolation_plancher_bas?: string | null;
+  u_plancher_bas_final_deperditif?: number | null;
+  type_isolation_plancher_haut?: string | null;
+  u_plancher_haut_deperditif?: number | null;
+  type_adjacence_principal_plancher_haut?: string | null;
+  u_porte?: number | null;
+  surface_porte?: number | null;
+  deperdition_mur?: number | null;
+  deperdition_plancher_haut?: number | null;
+  deperdition_plancher_bas?: number | null;
+  deperdition_baie_vitree?: number | null;
+  deperdition_porte?: number | null;
+}
+
+export interface RplsData {
+  rpls_open: boolean;
+  classe_ener_principale: string | null;
+  classe_ges_principale: string | null;
+  accessible_pmr: boolean | null;
+  dans_qpv: boolean;
+  shab_total_m2: number | null;
+  distribution_dpe: { A: number; B: number; C: number; D: number; E: number; F: number; G: number };
+}
+
+export interface ConsoAnnuelle {
+  annee: string;
+  pdl_elec_residentiel: number | null;
+  kwh_elec_residentiel: number | null;
+  pdl_gaz_residentiel: number | null;
+  kwh_gaz_residentiel: number | null;
+}
+
+export interface AideEligible {
+  code: string;
+  nom: string;
+  condition: string;
+  montant_estimatif_eur: number | null;
+  source: string;
+}
+
+export interface BuildingRank {
+  building_id: string;
+  score_total: number;
+  rank_iris: number | null;
+  total_iris: number | null;
+  percentile_iris: number | null;
+  rank_commune: number | null;
+  total_commune: number | null;
+  rank_dept: number | null;
+  total_dept: number | null;
+}
+
+export async function getBuildingRank(
+  buildingId: string,
+  signal?: AbortSignal,
+): Promise<BuildingRank> {
+  return fetchJson<BuildingRank>(
+    `${API_BASE}/buildings/${encodeURIComponent(buildingId)}/rank`,
+    { signal },
+  );
 }
 
 export interface BuildingsListParams {

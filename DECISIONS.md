@@ -778,3 +778,55 @@ D-022 avait positionné Vieux-Lille candidat B comme vedette principal et Wazemm
 | **Vedette PRINCIPAL** | **Wazemmes** | top-1 | `bdnb-bg-81UB-UTZE-ZP7F` | **96.1** | **1727** | **Bailleur social** | F |
 | Vedette FALLBACK | Vieux-Lille | candidat B | `bdnb-bg-JBP7-PFQL-4T69` | 91.1 | 714 | Copro privée | G |
 | Quartier PLAN C | Lens centre | (à identifier J22) | — | — | — | — | — |
+
+---
+
+## D-024 — Aplatissement de l'objet `score` au top-level de `BuildingDetail` + refonte fiche en dashboard hiérarchisé
+
+**Date** : 2026-05-23 · **Session** : J18 · **Statut** : appliqué (commit `<this>`)
+
+### Contexte
+
+L'audit `docs/BUILDING_DATA_INVENTORY.md` (2026-05-23) a révélé :
+
+1. Un **bug latent** côté Mode Projet : le frontend lisait `building.score_total`, `building.s_co2`, etc. à plat, mais l'API `/api/buildings/:id` les retournait nichés dans `building.score.*`. Résultat : `0/100` affiché, barres à 0, CO₂ évité `—`.
+2. **80 colonnes BDNB exploitables** non remontées à l'API (DPE détaillé U-values, conso DLE 7 ans, RPLS distribution, QPV, réseau chaleur, risques, urbanisme, fiabilité).
+3. La fiche Projet était une longue liste de champs, pas un dashboard hiérarchisé.
+
+### Décision
+
+**Refonte complète** de l'endpoint `/api/buildings/:id` et de la fiche Mode Projet en deux temps :
+
+1. **Aplatir** les composantes scoring au top-level de `BuildingDetail` Pydantic (avec rétrocompat : l'objet `score` nesté reste exposé pour les scripts internes). Le calcul de `score_total` à la volée (formule pondérée standard `0.35·s_co2 + 0.25·s_faisa + 0.20·s_cout + 0.10·s_social + 0.10·s_passoire`) est aussi exposé.
+2. **Enrichir** l'endpoint avec une jointure dynamique sur le schéma `bdnb_2025_07_a_open_data_dep{dept}` (whitelist HDF stricte = anti-injection) qui remonte :
+   - Adresse BAN, identifiant DPE ADEME, dates
+   - QPV + Réseau de chaleur + Urbanisme AC1
+   - Diagnostic technique complet (U-values, chauffage, ECS, ventilation, vitrage, déperditions par poste)
+   - RPLS bailleurs sociaux (distribution DPE par logement, accessibilité PMR)
+   - Conso réelle 7 ans (DLE Enedis + GRDF)
+   - Risques naturels (radon, argile, sismique)
+   - Fiabilité BDNB par axe (emprise, hauteur, adresse)
+   - Accès chantier (largeur voirie + distance)
+3. **Calculer en backend** : coût énergie annuel + 30 ans (tarif pondéré 0.15 €/kWh), émissions totales 30 ans, période thermique réglementaire, date d'expiration DPE, aides éligibles (matrice règles Eco-PLS / ANRU / CEE / MPR Copro / RCU / Fonds vert).
+4. **Nouvel endpoint** `GET /api/buildings/:id/rank` (lazy) qui retourne le classement IRIS + commune via 2 CTE MATERIALIZED (dept abandonné pour perf : 600k rows × formule = 5+s, IRIS+commune suffisent narrativement).
+5. **Refonte UI** : fiche compacte par défaut (identité, score, badges contextuels, perf, voisins) + bouton "Voir tout le dashboard" qui déplie 6 sections expert (A Diagnostic technique, B Conso 7 ans, C RPLS distribution, D Coût + classement, E Aides, F Risques + urbanisme).
+
+### Justification du choix d'aplatissement vs propagation `score.*`
+
+| Option | Pour | Contre | Verdict |
+|---|---|---|---|
+| Aplatir côté API | 1 endroit, frontend simple, plus de bug latent | Casse rétrocompat si script externe lit `score` | **Retenu** + on garde `score` nesté en parallèle |
+| Propager `score.*` côté frontend | 0 changement API | Touche tous les composants qui consomment `BuildingDetail`, risque de bug similaire ailleurs | Écarté |
+
+Le doublon `score` (à plat + nesté) coûte ~150 bytes de payload supplémentaires. Acceptable.
+
+### Performance
+
+- `/api/buildings/:id` Wazemmes : ~250 ms (1 query public_data + 2 queries BDNB séquentielles, asyncpg ne supporte pas opérations concurrentes sur 1 conn).
+- `/api/buildings/:id/rank` Wazemmes : ~1.7 s (IRIS rapide, commune Lille 80k rows × formule = bottleneck, mais "lazy" donc invisible au first paint).
+- Optimisation post-démo si besoin : matérialiser `score_total` comme colonne générée dans `building_scores` avec index → rank en < 100ms.
+
+### Anti-pattern à ne PAS faire
+
+- **Schéma BDNB en string-interpolation sans whitelist** : risque SQL injection. La whitelist `_BDNB_DEPTS = {"02","59","60","62","80"}` doit rester stricte. Tout nouveau dpt doit être ajouté ici explicitement.
+- **`asyncio.gather` sur deux queries asyncpg avec la même connexion** : tentation logique → exception `cannot perform operation: another operation is in progress`. Le code les séquence correctement.

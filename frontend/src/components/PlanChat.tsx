@@ -363,7 +363,10 @@ export function PlanChat({ building }: Props) {
   }
 
   return (
-    <div className="border-t bg-card flex flex-col" style={{ minHeight: 320, maxHeight: 540 }}>
+    <div
+      className="border-t bg-card flex flex-col shrink min-h-0"
+      style={{ flex: "0 1 540px", minHeight: 220 }}
+    >
       {/* Versions chips */}
       <div className="px-3 py-2 border-b flex items-center gap-1.5 overflow-x-auto">
         <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" />

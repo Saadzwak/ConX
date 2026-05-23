@@ -27,9 +27,9 @@ export function BuildingDrawer({ building, onClose }: Props) {
   return (
     <aside className="w-96 border-l bg-card shrink-0 flex flex-col overflow-hidden">
       <div className="border-b px-4 py-3 flex items-start justify-between">
-        <div>
+        <div className="min-w-0">
           <div className="text-xs text-muted-foreground">{building.dept ? `Dpt ${building.dept}` : ""}</div>
-          <h3 className="font-semibold text-sm break-all">{building.building_id}</h3>
+          <h3 className="font-semibold text-sm break-words leading-snug">{building.building_id}</h3>
           {building.rnb_id && (
             <p className="text-xs text-muted-foreground mt-0.5">RNB {building.rnb_id}</p>
           )}

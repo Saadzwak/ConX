@@ -27,7 +27,6 @@ import {
   Building2,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
   MapPin,
   ShieldCheck,
   Flame,
@@ -45,7 +44,13 @@ import {
   ResponsiveContainer,
   Legend,
   CartesianGrid,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
 } from "recharts";
+import { useCountUp } from "@/lib/useCountUp";
 
 import { ProjetMap } from "@/map/ProjetMap";
 import { PlanChat } from "@/components/PlanChat";
@@ -210,15 +215,15 @@ function CompactCard({ building }: { building: BuildingDetail }) {
                 </p>
               )}
               {building.identifiant_dpe_ademe && (
-                <a
-                  className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline mt-0.5"
-                  href={`https://observatoire-dpe-audit.ademe.fr/afficher-dpe-logement/${building.identifiant_dpe_ademe}`}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  title="Voir le DPE détaillé sur l'observatoire ADEME"
+                <p
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5"
+                  title="Identifiant DPE officiel ADEME — consultable sur observatoire-dpe-audit.ademe.fr"
                 >
-                  DPE ADEME {building.identifiant_dpe_ademe} <ExternalLink className="h-3 w-3" />
-                </a>
+                  DPE ADEME :{" "}
+                  <code className="font-mono text-[10.5px] text-foreground/80">
+                    {building.identifiant_dpe_ademe}
+                  </code>
+                </p>
               )}
               <p className="text-[10px] text-muted-foreground/70 mt-1 font-mono break-all">
                 {building.building_id}
@@ -279,25 +284,58 @@ function CompactCard({ building }: { building: BuildingDetail }) {
         </div>
       </section>
 
-      {/* Composantes scoring */}
+      {/* Composantes scoring — radar visuel + barres détaillées */}
       <section className="space-y-1.5">
         <SectionTitle>Composantes du score</SectionTitle>
-        <ScoreBar label="CO₂ évité" value={building.s_co2} />
-        <ScoreBar label="Faisabilité" value={building.s_faisa} />
-        <ScoreBar label="Coût" value={building.s_cout} />
-        <ScoreBar label="Social" value={building.s_social} />
-        <ScoreBar label="Passoire" value={building.s_passoire} />
+        <ScoreRadar
+          s_co2={building.s_co2}
+          s_faisa={building.s_faisa}
+          s_cout={building.s_cout}
+          s_social={building.s_social}
+          s_passoire={building.s_passoire}
+        />
+        <details className="text-[10.5px] text-muted-foreground">
+          <summary className="cursor-pointer hover:text-foreground select-none">
+            Voir le détail des 5 composantes
+          </summary>
+          <div className="mt-1.5 space-y-1.5">
+            <ScoreBar label="CO₂ évité" value={building.s_co2} />
+            <ScoreBar label="Faisabilité" value={building.s_faisa} />
+            <ScoreBar label="Coût" value={building.s_cout} />
+            <ScoreBar label="Social" value={building.s_social} />
+            <ScoreBar label="Passoire" value={building.s_passoire} />
+          </div>
+        </details>
       </section>
 
-      {/* Impacts 30 ans */}
+      {/* Impacts 30 ans — chiffres animés au paint pour l'effet pitch */}
       <section className="rounded-md border p-3 space-y-1.5 text-xs bg-primary/5">
         <div className="font-semibold text-sm flex items-center gap-1.5">
           <Award className="h-4 w-4 text-primary" /> Impacts 30 ans
         </div>
         <div className="grid grid-cols-3 gap-2 mt-1">
-          <BigStat label="CO₂ évité" value={fmtT(building.co2_evite_t)} unit="tCO₂" />
-          <BigStat label="Coût op." value={fmtMoneyShort(building.cout_estime_eur)} />
-          <BigStat label="€/tCO₂" value={fmtMoneyShort(building.cout_eur_par_t_co2)} />
+          <BigStat
+            label="CO₂ évité"
+            value={fmtT(building.co2_evite_t)}
+            unit="tCO₂"
+            animateNumber={building.co2_evite_t ?? null}
+          />
+          <BigStat
+            label="Coût op."
+            value={fmtMoneyShort(building.cout_estime_eur)}
+            animateNumber={
+              building.cout_estime_eur != null
+                ? building.cout_estime_eur / 1000
+                : null
+            }
+            unit={building.cout_estime_eur != null && building.cout_estime_eur >= 1000 ? "k€" : "€"}
+          />
+          <BigStat
+            label="€/tCO₂"
+            value={fmtMoneyShort(building.cout_eur_par_t_co2)}
+            animateNumber={building.cout_eur_par_t_co2 ?? null}
+            unit="€"
+          />
         </div>
       </section>
 
@@ -329,11 +367,16 @@ function ContextBadges({
   building: BuildingDetail;
   dpeIsReal: boolean;
 }) {
-  const items: { label: string; tone: BadgeTone }[] = [];
+  // Chaque badge porte un `tooltip` pour expliquer le sigle technique en hover.
+  // Cible : un juré ou un utilisateur non-spécialiste qui survole un badge
+  // « AC1 » doit immédiatement savoir ce que c'est.
+  const items: { label: string; tone: BadgeTone; tooltip?: string }[] = [];
   if (building.dans_qpv) {
     items.push({
       label: `QPV${building.qpv_nom ? " · " + building.qpv_nom : ""}`,
       tone: "info",
+      tooltip:
+        "Quartier Prioritaire de la Politique de la Ville — bonus de financement rénovation (CEE majorés, ANRU si éligible).",
     });
   }
   if (building.reseau_chaleur_id) {
@@ -342,29 +385,54 @@ function ContextBadges({
         ? `Réseau chaleur ${building.reseau_chaleur_id} · prioritaire`
         : `Réseau chaleur ${building.reseau_chaleur_id}`,
       tone: "success",
+      tooltip:
+        "Réseau de Chaleur Urbain (RCU) à proximité. Statut « prioritaire » = obligation de raccordement réglementaire pour les bâtiments tertiaires neufs.",
     });
   }
   if (building.urbanisme?.zone_ac1) {
-    items.push({ label: "Zone AC1 · servitude", tone: "warn" });
+    items.push({
+      label: "Zone AC1 · servitude",
+      tone: "warn",
+      tooltip:
+        "Servitude AC1 : Abords de Monument Historique. Tout travaux visibles doivent obtenir l'avis conforme de l'Architecte des Bâtiments de France (ABF).",
+    });
   }
   if (building.monument_historique) {
-    items.push({ label: "Monument historique", tone: "warn" });
+    items.push({
+      label: "Monument historique",
+      tone: "warn",
+      tooltip:
+        "Bâtiment inscrit ou classé Monument Historique — autorisations renforcées + accès aux aides spécifiques (DRAC).",
+    });
   }
   if (building.spr) {
-    items.push({ label: "SPR", tone: "warn" });
+    items.push({
+      label: "SPR",
+      tone: "warn",
+      tooltip:
+        "Site Patrimonial Remarquable — protection urbanistique d'ensemble, règles ABF.",
+    });
   }
   if (building.rpls?.accessible_pmr === false) {
-    items.push({ label: "Non accessible PMR", tone: "danger" });
+    items.push({
+      label: "Non accessible PMR",
+      tone: "danger",
+      tooltip:
+        "PMR = Personnes à Mobilité Réduite. Bâtiment déclaré non accessible dans le Répertoire des Logements Locatifs des bailleurs Sociaux (RPLS).",
+    });
   }
   items.push({
     label: dpeIsReal ? "DPE réel ADEME" : "DPE estimé IA",
     tone: dpeIsReal ? "default" : "muted",
+    tooltip: dpeIsReal
+      ? "Diagnostic de Performance Énergétique officiel issu de la base ADEME (observatoire-dpe-audit.ademe.fr)."
+      : "Diagnostic estimé par modèle Random Forest entraîné sur les DPE ADEME existants — à confirmer par diagnostic réel avant travaux.",
   });
   if (items.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((it, i) => (
-        <ChipBadge key={i} tone={it.tone}>
+        <ChipBadge key={i} tone={it.tone} tooltip={it.tooltip}>
           {it.label}
         </ChipBadge>
       ))}
@@ -890,19 +958,81 @@ function Footer({ building }: { building: BuildingDetail }) {
 // =========================================================================
 
 function ScoreCircle({ score }: { score: number }) {
-  const pct = Math.max(0, Math.min(1, score)) * 100;
+  const targetPct = Math.max(0, Math.min(1, score)) * 100;
+  const animated = useCountUp(targetPct, { duration: 900 });
   return (
     <div
-      className="relative h-20 w-20 rounded-full shrink-0 grid place-items-center"
+      className="relative h-20 w-20 rounded-full shrink-0 grid place-items-center transition-all"
       style={{
-        background: `conic-gradient(hsl(var(--primary)) ${pct}%, hsl(var(--muted)) ${pct}% 100%)`,
+        background: `conic-gradient(hsl(var(--primary)) ${animated}%, hsl(var(--muted)) ${animated}% 100%)`,
       }}
-      title={`Score ConX : ${pct.toFixed(0)}/100`}
+      title={`Score ConX de priorisation : ${targetPct.toFixed(0)}/100`}
     >
       <div className="absolute inset-1.5 rounded-full bg-card grid place-items-center text-center">
-        <div className="font-bold text-xl leading-none">{pct.toFixed(0)}</div>
+        <div className="font-bold text-xl leading-none tabular-nums">
+          {animated.toFixed(0)}
+        </div>
         <div className="text-[9px] text-muted-foreground -mt-0.5">/100</div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Radar pentagone des 5 composantes du score ConX.
+ * Affiche les 5 axes (CO₂, Faisabilité, Coût, Social, Passoire) sur 0-1.
+ * Petit (taille fiche compacte), lisible, narratif pour le pitch.
+ */
+function ScoreRadar({
+  s_co2,
+  s_faisa,
+  s_cout,
+  s_social,
+  s_passoire,
+}: {
+  s_co2: number | null;
+  s_faisa: number | null;
+  s_cout: number | null;
+  s_social: number | null;
+  s_passoire: number | null;
+}) {
+  const data = [
+    { axis: "CO₂", value: (s_co2 ?? 0) * 100 },
+    { axis: "Faisa", value: (s_faisa ?? 0) * 100 },
+    { axis: "Coût", value: (s_cout ?? 0) * 100 },
+    { axis: "Social", value: (s_social ?? 0) * 100 },
+    { axis: "Passoire", value: (s_passoire ?? 0) * 100 },
+  ];
+  return (
+    <div className="h-32 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <RadarChart data={data} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
+          <PolarGrid stroke="hsl(var(--border))" strokeOpacity={0.6} />
+          <PolarAngleAxis
+            dataKey="axis"
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          />
+          <PolarRadiusAxis
+            angle={90}
+            domain={[0, 100]}
+            tick={false}
+            stroke="transparent"
+          />
+          <Radar
+            name="Composantes"
+            dataKey="value"
+            stroke="hsl(var(--primary))"
+            fill="hsl(var(--primary))"
+            fillOpacity={0.35}
+            isAnimationActive
+            animationDuration={900}
+          />
+          <RTooltip
+            formatter={(v) => [`${Math.round(Number(v))}/100`, "Score"]}
+            contentStyle={{ fontSize: 11 }}
+          />
+        </RadarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -934,7 +1064,17 @@ function DpeBadge({
 
 type BadgeTone = "default" | "info" | "success" | "warn" | "danger" | "muted";
 
-function ChipBadge({ tone, children }: { tone: BadgeTone; children: React.ReactNode }) {
+function ChipBadge({
+  tone,
+  children,
+  tooltip,
+}: {
+  tone: BadgeTone;
+  children: React.ReactNode;
+  /** Si fourni, l'attribut `title` natif déclenche un tooltip au hover.
+   * Volontairement basique (native), évite d'ajouter une lib tooltip. */
+  tooltip?: string;
+}) {
   const cls = {
     default: "bg-primary/10 text-primary border-primary/20",
     info: "bg-blue-50 text-blue-900 border-blue-200",
@@ -947,8 +1087,10 @@ function ChipBadge({ tone, children }: { tone: BadgeTone; children: React.ReactN
     <span
       className={cn(
         "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium",
+        tooltip && "cursor-help",
         cls,
       )}
+      title={tooltip}
     >
       {children}
     </span>
@@ -983,16 +1125,45 @@ function DL({ label, value, sub }: { label: string; value: string; sub?: string 
   );
 }
 
-function BigStat({ label, value, unit }: { label: string; value: string; unit?: string }) {
+function BigStat({
+  label,
+  value,
+  unit,
+  animateNumber,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  /** Si fourni, anime la valeur numérique en count-up. Le rendu est formaté
+   * via Intl.NumberFormat fr-FR. La prop `value` est ignorée si présente. */
+  animateNumber?: number | null;
+}) {
   return (
     <div className="rounded-md bg-card border border-border px-2 py-1.5 text-center">
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="text-sm font-bold">
-        {value}
+      <div className="text-sm font-bold tabular-nums">
+        {animateNumber !== undefined && animateNumber !== null ? (
+          <AnimatedNumber target={animateNumber} />
+        ) : (
+          value
+        )}
         {unit && <span className="text-[10px] text-muted-foreground ml-0.5">{unit}</span>}
       </div>
     </div>
   );
+}
+
+function AnimatedNumber({ target }: { target: number }) {
+  const v = useCountUp(target, { duration: 750 });
+  const fmt = (n: number): string => {
+    if (Math.abs(n) >= 1000) {
+      return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(
+        Math.round(n),
+      );
+    }
+    return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(n);
+  };
+  return <>{fmt(v)}</>;
 }
 
 function ScoreBar({ label, value }: { label: string; value: number | null | undefined }) {

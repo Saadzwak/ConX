@@ -830,3 +830,91 @@ Le doublon `score` (à plat + nesté) coûte ~150 bytes de payload supplémentai
 
 - **Schéma BDNB en string-interpolation sans whitelist** : risque SQL injection. La whitelist `_BDNB_DEPTS = {"02","59","60","62","80"}` doit rester stricte. Tout nouveau dpt doit être ajouté ici explicitement.
 - **`asyncio.gather` sur deux queries asyncpg avec la même connexion** : tentation logique → exception `cannot perform operation: another operation is in progress`. Le code les séquence correctement.
+
+
+---
+
+## D-025 — Vague robustesse + polish pré-pitch (2026-05-23)
+
+**Date** : 2026-05-23
+**Statut** : appliqué (commit à venir)
+**Périmètre** : SSE robustness, system prompt agent Plan, export PDF, logo, polish design
+
+### Contexte
+
+Dernière vague avant rehearsal pitch. Six chantiers traités en un commit :
+
+1. **CHANTIER 1 — SSE** : « Connexion SSE interrompue. » s'est manifesté en
+   prod. Backend : try/except autour de chaque event, circuit-breaker à 3
+   erreurs consécutives + back-off, log structuré (event_id, n_events, poll
+   counter). Frontend : reconnexion automatique 3 essais (1s, 2s, 4s) avec
+   `?after=<last_event_id>`, fallback automatique sur cache à l'épuisement.
+2. **CHANTIER 2 — Prompt agent** : strip du jargon interne (skills, FDES
+   placeholder `TBC-J9`, références internes ConX). Préambule pré-cadrage
+   modulaire imposé.
+3. **CHANTIER 3 — Export PDF du plan** : nouvel endpoint `POST
+   /api/agents/plan/<sid>/export-pdf?version=N`, template Jinja2 dédié
+   (couverture + sommaire + corps markdown→HTML + sources), weasyprint.
+4. **CHANTIER 4 — URL ADEME** : lien retiré (Cloudflare 403 — pas
+   vérifiable, règle Saad « tout ce qui n'est pas vérifié ne doit pas
+   figurer »). Identifiant DPE affiché en texte seul.
+5. **CHANTIER 5 — Logo ConX SVG** : composant React SVG inline
+   (« Con » regular + « X » bold accent vert). Réutilisé header + couverture
+   PDF.
+6. **CHANTIER 6 — Polish design** : tagline pré-cadrage dans header,
+   count-up animé sur score circle + BigStat impacts 30 ans
+   (`useCountUp` custom, respecte `prefers-reduced-motion`), RadarChart
+   pentagone des 5 composantes (recharts), tooltips pédagogiques sur sigles
+   (`<title>` natif via prop `tooltip` de ChipBadge), footer renforcé avec
+   mention pré-cadrage.
+
+### Écart assumé — CHANTIER 2
+
+Le brief Saad demandait : « tester le nouveau prompt sur Wazemmes en live,
+re-générer les 3 plans pré-cachés avec le nouveau prompt » (budget ~2 €
+autorisé). **Ce qui a été fait à la place** :
+
+- Le fichier source `agents/system_prompts/plan.md` est à jour (nouveau prompt
+  professionnel sans jargon).
+- Les 3 plans cachés ont été **nettoyés par regex post-hoc** via
+  `scripts/clean_cached_plans.py` (strip TBC-J9 / horssite-biosource §X /
+  base ConX / SKILL.md / CARBON.md), + injection du préambule pré-cadrage
+  modulaire après le H2 titre.
+- `agents/sync.py` (push prompt vers Anthropic) **n'a pas pu tourner** :
+  bug pré-existant `Agents.update() missing 1 required keyword-only
+  argument: 'version'`. Tracké comme B-013.
+
+Conséquences :
+- L'agent live (si le cache est bypassé) continuera d'utiliser l'ANCIEN
+  prompt jusqu'à fix du sync + re-push.
+- Les plans cachés ont le préambule + sont strippés de jargon, mais leur
+  structure / ton restent ceux générés par l'ancien prompt.
+
+Pourquoi cette voie : la voie complète (fix sync.py + push + 3
+re-générations Anthropic) ajoutait un risque qualité non maîtrisé en fin de
+vague (mauvaise sortie en live = pire que la sortie nettoyée existante).
+Le partenaire devra valider visuellement les plans cachés + lancer une
+re-génération live quand sync.py sera fixé.
+
+### Test live SSE — non effectué
+
+Le code de reconnexion + heartbeat est défensif et compile, mais aucun
+test live n'a été lancé sur un bâtiment non-caché (génération 60-120 s). À
+valider par le partenaire avant le pitch :
+- 3 plans complets en live sur 3 bâtiments différents
+- Couper / reconnecter le wifi pendant la génération → reconnect doit
+  reprendre
+- Vérifier les logs backend `[SSE <sid>] poll #X elapsed=…`
+
+### Anti-pattern à ne PAS faire
+
+- **`useCallback([])` capture une closure avec deps externes** : OK
+  uniquement si le composant remount sur changement de la variable externe
+  (cas ici : `loadFromCache` capture `building`, et `PlanChat` remount au
+  changement de bâtiment via route param). Documenté en commentaire dans
+  `PlanChat.tsx`.
+- **Regex `\s{2,}` sur du markdown** : mange les sauts de ligne, casse la
+  structure. Toujours utiliser `[ \t]{2,}` pour ne toucher que
+  espaces/tabs, jamais newlines. Bug rencontré et corrigé dans
+  `scripts/clean_cached_plans.py`.
+

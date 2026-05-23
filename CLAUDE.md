@@ -2,7 +2,7 @@
 
 > **À toi, Claude, qui ouvre ce repo dans une nouvelle session : lis intégralement ce fichier avant tout autre.** Il est la référence unique. Quand quelque chose contredit ce fichier, ce fichier gagne. Quand tu changes quelque chose de structurant, mets ce fichier à jour.
 
-**Dernière mise à jour** : 2026-05-22
+**Dernière mise à jour** : 2026-05-23
 **Version plan** : v1 (plan validé à 95 %, 7 points préparatoires en cours)
 **Statut** : Pré-implémentation (aucun code applicatif écrit avant validation des livrables prép.)
 
@@ -373,6 +373,7 @@ Tu ne décides JAMAIS seul sur :
 | ~~SUP~~ | ~~Supabase migration RLS~~ | RESOLU 2026-05-22 | Schema `app` créé via PAT, RLS roundtrip OK (4 tables isolées par user_id). |
 | B-011 | Arbitrage LiDAR HD post-test live | MINEUR | Après test live partenaire (BD TOPO suffit ou pas) |
 | B-012 | Auth EventSource SSE (cookie ou polyfill) | MINEUR | Post-concours hardening prod |
+| B-013 | `agents/sync.py` plante sur `Agents.update() version` arg | MOYENNE | Fix court avant pitch (prompt source mis à jour mais pas pushé live) |
 
 ---
 

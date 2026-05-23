@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>ConX — Pré-cadrage rénovation hors-site biosourcée</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 2cm 1.8cm 2.2cm 1.8cm;
+      @bottom-left {
+        content: "ConX · Pré-cadrage rénovation hors-site biosourcée";
+        font-family: 'Inter', 'Helvetica', sans-serif;
+        font-size: 8pt;
+        color: #666;
+      }
+      @bottom-right {
+        content: "Page " counter(page) " / " counter(pages);
+        font-family: 'Inter', 'Helvetica', sans-serif;
+        font-size: 8pt;
+        color: #666;
+      }
+    }
+    @page :first {
+      margin: 0;
+      @bottom-left { content: ""; }
+      @bottom-right { content: ""; }
+    }
+
+    body {
+      font-family: 'Inter', 'Helvetica', 'Arial', sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.55;
+      color: #1a1a1a;
+    }
+
+    /* === Page de couverture === */
+    .cover {
+      page: cover;
+      width: 100%;
+      min-height: 100vh;
+      padding: 5cm 3cm 3cm 3cm;
+      box-sizing: border-box;
+      background: linear-gradient(180deg, #fafdfb 0%, #f0f7f3 100%);
+      page-break-after: always;
+    }
+    .cover-logo {
+      font-family: 'Inter', sans-serif;
+      font-size: 36pt;
+      font-weight: 800;
+      letter-spacing: -1px;
+      margin-bottom: 0.3em;
+      color: #1a1a1a;
+    }
+    .cover-logo .accent { color: #1c7c54; }
+    .cover-tag {
+      font-size: 10pt;
+      color: #555;
+      margin-bottom: 4cm;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    .cover-title {
+      font-size: 26pt;
+      font-weight: 700;
+      line-height: 1.15;
+      color: #1c7c54;
+      margin-bottom: 0.4em;
+    }
+    .cover-subtitle {
+      font-size: 14pt;
+      color: #333;
+      margin-bottom: 1.5cm;
+      font-weight: 400;
+    }
+    .cover-meta {
+      font-size: 9.5pt;
+      color: #555;
+      border-top: 1px solid #c5d8c8;
+      padding-top: 0.6cm;
+      margin-top: 0.8cm;
+    }
+    .cover-meta dt { font-weight: 600; color: #333; }
+    .cover-meta dd { margin: 0 0 0.4em 0; }
+    .cover-meta .row { display: flex; gap: 1.5cm; flex-wrap: wrap; }
+    .cover-meta .row > div { flex: 0 0 calc(50% - 0.75cm); }
+    .cover-disclaimer {
+      margin-top: 1.5cm;
+      padding: 0.6cm 0.8cm;
+      background: #fff8e1;
+      border-left: 3px solid #f0a020;
+      font-size: 9pt;
+      color: #5a4a10;
+      line-height: 1.5;
+    }
+    .cover-version-pill {
+      display: inline-block;
+      background: #1c7c54;
+      color: white;
+      padding: 0.25cm 0.6cm;
+      border-radius: 999px;
+      font-size: 9pt;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      margin-bottom: 1cm;
+    }
+
+    /* === Sommaire === */
+    .toc {
+      page-break-after: always;
+    }
+    .toc h2 {
+      font-size: 18pt;
+      color: #1c7c54;
+      border-bottom: 2px solid #1c7c54;
+      padding-bottom: 0.3em;
+      margin-bottom: 0.8em;
+    }
+    .toc-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.25em 0;
+      border-bottom: 1px dotted #d0d0d0;
+      font-size: 11pt;
+    }
+    .toc-item .num { color: #1c7c54; font-weight: 600; min-width: 1.3cm; }
+
+    /* === Corps du document === */
+    .body-content { padding-top: 0.5cm; }
+    .body-content h1 {
+      color: #1c7c54;
+      font-size: 18pt;
+      margin-top: 1.2em;
+      margin-bottom: 0.3em;
+      page-break-after: avoid;
+    }
+    .body-content h2 {
+      color: #1c7c54;
+      font-size: 14pt;
+      border-bottom: 1.5px solid #c5d8c8;
+      padding-bottom: 0.25em;
+      margin-top: 1.5em;
+      margin-bottom: 0.5em;
+      page-break-after: avoid;
+    }
+    .body-content h3 {
+      font-size: 12pt;
+      font-weight: 600;
+      margin-top: 1.2em;
+      margin-bottom: 0.4em;
+      color: #2a4a3a;
+      page-break-after: avoid;
+    }
+    .body-content h4 {
+      font-size: 10.5pt;
+      font-weight: 700;
+      margin-top: 0.9em;
+      margin-bottom: 0.3em;
+      color: #444;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .body-content p { margin: 0.4em 0; }
+    .body-content ul, .body-content ol {
+      margin: 0.4em 0 0.6em 0;
+      padding-left: 1.4em;
+    }
+    .body-content li { margin: 0.15em 0; }
+    .body-content strong { color: #1a1a1a; }
+    .body-content blockquote {
+      border-left: 3px solid #1c7c54;
+      background: #f0f7f3;
+      padding: 0.4em 0.8em;
+      margin: 0.8em 0;
+      color: #2a4a3a;
+      font-style: italic;
+    }
+    .body-content code {
+      background: #f4f4f4;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-family: 'Menlo', 'Courier New', monospace;
+      font-size: 9.5pt;
+      color: #1c7c54;
+    }
+    .body-content hr {
+      border: none;
+      border-top: 1px solid #d0d0d0;
+      margin: 1.2em 0;
+    }
+    .body-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.8em 0;
+      font-size: 9.5pt;
+      page-break-inside: avoid;
+    }
+    .body-content th {
+      background: #1c7c54;
+      color: white;
+      padding: 0.4em 0.6em;
+      text-align: left;
+      font-weight: 600;
+    }
+    .body-content td {
+      padding: 0.35em 0.6em;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .body-content tr:nth-child(even) td { background: #f7faf8; }
+
+    /* === Dernière page : sources === */
+    .sources-page {
+      page-break-before: always;
+      padding-top: 1cm;
+    }
+    .sources-page h2 {
+      color: #1c7c54;
+      font-size: 16pt;
+      border-bottom: 1.5px solid #c5d8c8;
+      padding-bottom: 0.2em;
+    }
+    .sources-page .source-block {
+      margin: 0.8em 0;
+      font-size: 9.5pt;
+      color: #444;
+      line-height: 1.55;
+    }
+    .legal {
+      margin-top: 2em;
+      padding: 0.8cm;
+      background: #fafafa;
+      border: 1px solid #e0e0e0;
+      font-size: 8.5pt;
+      line-height: 1.55;
+      color: #555;
+    }
+    .legal strong { color: #1a1a1a; }
+  </style>
+</head>
+<body>
+
+  <!-- === PAGE DE COUVERTURE === -->
+  <div class="cover">
+    <div class="cover-logo">Con<span class="accent">X</span></div>
+    <div class="cover-tag">Pré-cadrage rénovation hors-site biosourcée — Hauts-de-France</div>
+
+    <div class="cover-version-pill">PRÉ-CADRAGE · {{ version_label }}</div>
+
+    <div class="cover-title">{{ document_title }}</div>
+    <div class="cover-subtitle">{{ adresse_postale or building_id }}</div>
+
+    <dl class="cover-meta">
+      <div class="row">
+        <div>
+          <dt>Identifiant bâti BDNB</dt>
+          <dd><code>{{ building_id }}</code></dd>
+        </div>
+        {% if rnb_id %}
+        <div>
+          <dt>Référentiel National Bâtiment (RNB)</dt>
+          <dd><code>{{ rnb_id }}</code></dd>
+        </div>
+        {% endif %}
+        {% if commune_nom %}
+        <div>
+          <dt>Commune</dt>
+          <dd>{{ commune_nom }}{% if dept %} ({{ dept }}){% endif %}</dd>
+        </div>
+        {% endif %}
+        {% if identifiant_dpe_ademe %}
+        <div>
+          <dt>Identifiant DPE ADEME</dt>
+          <dd><code>{{ identifiant_dpe_ademe }}</code></dd>
+        </div>
+        {% endif %}
+        <div>
+          <dt>Version du pré-cadrage</dt>
+          <dd>{{ version_label }}</dd>
+        </div>
+        <div>
+          <dt>Date de génération</dt>
+          <dd>{{ generated_at }}</dd>
+        </div>
+      </div>
+    </dl>
+
+    <div class="cover-disclaimer">
+      <strong>Document généré automatiquement</strong> à partir de données
+      publiques (BDNB CSTB, DPE ADEME, IGN, INIES, ADEME Base Carbone, Etalab
+      2.0) et d'une analyse Claude Opus 4.7. Ce pré-cadrage est une <strong>orientation
+      modulaire</strong> destinée à la consultation de maîtrise d'œuvre — il
+      ne se substitue ni à un audit énergétique réglementaire, ni à une étude
+      structure, ni à un projet d'exécution. Tout chiffre est indicatif et à
+      valider par devis fournisseurs.
+    </div>
+  </div>
+
+  <!-- === SOMMAIRE === -->
+  <div class="toc">
+    <h2>Sommaire</h2>
+    {% for section in toc %}
+      <div class="toc-item">
+        <span><span class="num">{{ section.num }}</span>{{ section.title }}</span>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- === CORPS DU DOCUMENT === -->
+  <div class="body-content">
+    {{ plan_html|safe }}
+  </div>
+
+  <!-- === SOURCES ET MENTIONS === -->
+  <div class="sources-page">
+    <h2>Sources et données</h2>
+    <div class="source-block">
+      <strong>Données bâti</strong> — BDNB (CSTB, millésime {{ bdnb_millesime or '2025-07.a' }}),
+      DPE (ADEME, observatoire-dpe-audit.ademe.fr), Référentiel National
+      Bâtiment (IGN), BD TOPO (IGN), BAN (DGFiP).
+    </div>
+    <div class="source-block">
+      <strong>Données carbone</strong> — Base Carbone ADEME (facteurs
+      d'émission), INIES (Fiches de Déclaration Environnementale et Sanitaire
+      publiques, base-inies.fr).
+    </div>
+    <div class="source-block">
+      <strong>Cadre réglementaire</strong> — RE2020 (arrêté du 4 août 2021),
+      arrêté DPE 2021 (coefficient EP électricité 1.9 à partir 2026), CSTB
+      pour la documentation hors-site et préfabrication.
+    </div>
+    <div class="source-block">
+      <strong>Filière HDF</strong> — CD2E (centre de développement des
+      écoindustries Hauts-de-France), retours filière préfabrication
+      biosourcée 2025.
+    </div>
+    <div class="source-block">
+      <strong>Licence</strong> — données publiques sous
+      <em>Licence Ouverte Etalab 2.0</em>.
+    </div>
+
+    <div class="legal">
+      <strong>Mention légale.</strong> Ce pré-cadrage est un document
+      d'orientation produit par ConX, plateforme de pré-cadrage de rénovation
+      hors-site biosourcée pour les Hauts-de-France. Il <strong>ne remplace
+      pas</strong> l'avis d'un maître d'œuvre, d'un bureau d'études thermique
+      qualifié, d'un bureau de contrôle agréé, ni les diagnostics
+      réglementaires obligatoires (audit énergétique, amiante, plomb, étude
+      structure). ConX et les fabricants éventuellement mentionnés ne sont
+      liés par aucune relation contractuelle implicite. Les fourchettes de
+      coût sont indicatives filière HDF 2025 et nécessitent une consultation
+      multi-devis avant engagement. La responsabilité de la prescription
+      définitive reste celle du maître d'œuvre choisi par le maître
+      d'ouvrage.
+    </div>
+  </div>
+
+</body>
+</html>

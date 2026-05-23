@@ -48,9 +48,11 @@ pytest-cov==6.0.0
 # IFC validation (J13 — Mode Conformité)
 ifcopenshell==0.8.5
 
-# PDF generation (J13 — rapport conformité)
+# PDF generation (J13 — rapport conformité + CHANTIER 3 export plan IA)
 jinja2==3.1.4
 weasyprint==63.1
+# Markdown → HTML pour l'export PDF du plan IA (CHANTIER 3)
+markdown==3.7
 
 # Lint
 ruff==0.8.4

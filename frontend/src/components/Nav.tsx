@@ -1,6 +1,7 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Building2, Map, FileCheck2 } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 const NAV_LINKS = [
   { to: "/strategie", label: "Stratégie", icon: Map },
@@ -12,19 +13,15 @@ export function Nav() {
   return (
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70 sticky top-0 z-30">
       <div className="container flex h-14 items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div
-              aria-hidden
-              className="h-8 w-8 rounded-md bg-primary text-primary-foreground grid place-items-center font-bold"
-            >
-              C
-            </div>
-            <span className="font-semibold tracking-tight">ConX</span>
-            <span className="text-xs text-muted-foreground hidden md:inline">
-              · Rénovation hors-site décarbonée · Hauts-de-France
+        <div className="flex items-center gap-3 min-w-0">
+          <Link to="/" className="flex items-center gap-3 min-w-0" aria-label="ConX accueil">
+            <Logo size={28} />
+            <span className="text-[11px] leading-tight text-muted-foreground hidden lg:block border-l pl-3">
+              Pré-cadrage rénovation
+              <br />
+              hors-site biosourcée · HDF
             </span>
-          </div>
+          </Link>
         </div>
 
         <nav className="flex items-center gap-1">

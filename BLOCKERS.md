@@ -598,3 +598,60 @@ Le navigateur API `EventSource` (utilisée par `frontend/src/components/PlanChat
 
 ### Décision attendue (post-concours)
 Choisir option 1 ou 3 (option 2 trop fragile). Probablement option 1 (cookie HttpOnly) pour rester simple et standard.
+
+---
+
+## B-013 — `agents/sync.py` plante sur `Agents.update()` (manque arg `version`)
+
+**Date découverte** : 2026-05-23
+**Sévérité** : MOYENNE (bloque le push du nouveau system prompt en live)
+**Symptôme** :
+```
+TypeError: Agents.update() missing 1 required keyword-only argument: 'version'
+File "C:\Users\redaz\Desktop\CD2E\agents\sync.py", line 254
+```
+
+### Contexte
+
+Vague robustesse 2026-05-23 a mis à jour `agents/system_prompts/plan.md`
+(suppression jargon, framing pré-cadrage modulaire). Pour pousser ce prompt
+sur l'agent live `conx-plan` (`agent_01RGJxJVyN5jGLup9fGHQWxs`), on a tenté
+`python agents/sync.py` :
+- Le `--check` passe (connexion OK, 3 agents/2 envs/10 skills listés).
+- Le `--dry-run` passe (diff calculé).
+- Le `sync` réel échoue sur la première mise à jour d'agent : la signature
+  `client.beta.agents.update()` du SDK Anthropic 0.103+ exige désormais un
+  paramètre `version` (numéro de version de l'agent à updater) qui n'était
+  pas requis lors du dev initial (SDK 0.96.0).
+
+### Conséquence immédiate
+
+L'agent live `conx-plan` tourne TOUJOURS avec l'ancien prompt (avec
+références skills internes, FDES placeholder, etc.). Le frontend masque
+cela en démo via le cache (3 plans pré-cachés nettoyés post-hoc par regex
++ injection préambule). Mais une génération live d'un plan sur un bâtiment
+non-caché reproduira le vieux style.
+
+### Pistes de fix (1 ligne probable)
+
+```python
+# agents/sync.py:254
+client.beta.agents.update(
+    agent_id=agent_id,
+    version=existing_agent.version,  # ← AJOUTER (lecture depuis l'objet retrieve())
+    **{k: v for k, v in payload.items() if k != "name"}
+)
+```
+
+Il faut récupérer la version courante de l'agent via `client.beta.agents.retrieve(agent_id)`
+juste avant l'update, ou la stocker dans `agents.lock.yaml` lors d'un sync
+initial.
+
+### Décision actuelle
+
+Différé hors de cette vague (out-of-scope). Tracké pour fix dédié court
+avant rehearsal pitch. **Workaround tactique en attendant** : la démo
+s'appuie principalement sur le cache. Si live nécessaire, le partenaire
+peut éditer le prompt directement dans la console Anthropic
+(https://console.anthropic.com/), copier le contenu de
+`agents/system_prompts/plan.md`.

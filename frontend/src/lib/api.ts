@@ -406,6 +406,54 @@ export function planStreamUrl(sessionId: string, after?: string): string {
   return `${API_BASE}/agents/plan/${encodeURIComponent(sessionId)}/stream${qs}`;
 }
 
+/**
+ * Demande au backend de générer un PDF du plan v{version} et le télécharge.
+ *
+ * Le `plan_text` est envoyé par le frontend (il l'a déjà après le SSE ou
+ * via le cache local) pour éviter au backend un re-fetch Anthropic qui
+ * coûterait des tokens. Le bâtiment est utilisé pour enrichir la couverture
+ * du PDF (adresse, identifiant DPE ADEME).
+ *
+ * Trigger un download navigateur via un blob temporaire.
+ */
+export async function exportPlanPdf(args: {
+  sessionId: string;
+  version: number;
+  planText: string;
+  buildingId: string;
+}): Promise<void> {
+  const jwt = await getCurrentJwt();
+  const r = await fetch(
+    `${API_BASE}/agents/plan/${encodeURIComponent(args.sessionId)}/export-pdf?version=${args.version}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+      },
+      body: JSON.stringify({
+        plan_text: args.planText,
+        building_id: args.buildingId,
+      }),
+    },
+  );
+  if (!r.ok) {
+    const detail = await r.text().catch(() => r.statusText);
+    throw new Error(`Export PDF échoué (${r.status}) : ${detail}`);
+  }
+  const blob = await r.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ConX_pre-cadrage_${args.buildingId}_v${args.version}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }, 100);
+}
+
 // ---------------------------------------------------------------------------
 // Conformité IFC (J17)
 // ---------------------------------------------------------------------------

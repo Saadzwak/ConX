@@ -1267,3 +1267,82 @@ Métriques retenues pour la doc et le pitch jury :
 - Partenaire teste la plateforme en live (Wazemmes Mode Projet + chat itératif + IFC).
 - Selon retour : LiDAR HD à activer ou pas.
 
+
+---
+
+## 2026-05-23 — Session 16 (Robustesse SSE + polish pré-pitch + 6 chantiers)
+
+### Contexte
+Dernière grosse vague avant rehearsal pitch CD2E. Brief Saad en 6
+chantiers : robustesse SSE, prompt agent sans jargon, export PDF, URL
+ADEME vérifiée, logo SVG, polish design. Mode boucle continue.
+
+### Décisions
+- **D-025** : vague robustesse + polish documentée (DECISIONS.md).
+- **CHANTIER 2 écart assumé** : prompt source mis à jour mais agent live
+  pas resynchronisé (bug pré-existant `sync.py` → **B-013**). Plans cachés
+  nettoyés par regex post-hoc + injection préambule pré-cadrage modulaire.
+  Pas de re-génération Anthropic (sécurité qualité fin de vague).
+- **CHANTIER 4** : lien ADEME retiré (Cloudflare 403, pas vérifiable, règle
+  Saad respectée). Identifiant DPE affiché en texte.
+
+### Modifs structurelles
+- `backend/app/plan_export.py` (nouveau) : markdown→HTML→PDF via jinja2 +
+  weasyprint + `markdown` lib. Template `plan_rapport.html` (couverture +
+  TOC + corps + sources + mention légale).
+- `backend/app/routers/agents.py` : nouvel endpoint `POST /api/agents/plan/
+  <sid>/export-pdf?version=N`. Robustesse SSE : circuit-breaker 3 erreurs,
+  back-off, try/except par event individuel, log structuré
+  `[SSE <sid>] poll #X elapsed=…`.
+- `frontend/src/components/Logo.tsx` (nouveau) : SVG inline composant.
+- `frontend/src/lib/useCountUp.ts` (nouveau) : hook animation count-up
+  (respecte prefers-reduced-motion).
+- `frontend/src/components/PlanChat.tsx` : reconnect 3 essais avec
+  `?after=<last_id>`, fallback cache automatique, bouton « PDF ».
+- `frontend/src/components/Nav.tsx` + `Footer.tsx` : logo + tagline
+  pré-cadrage + footer renforcé « ne remplace pas un MOE ».
+- `frontend/src/pages/Projet.tsx` : RadarChart pentagone, count-up sur
+  ScoreCircle + BigStat impacts 30 ans, tooltips pédagogiques sur sigles
+  (QPV, AC1, RPLS, PMR, RCU), lien ADEME → texte simple.
+- `scripts/clean_cached_plans.py` (nouveau) : idempotent, strip jargon
+  internes + injection préambule modulaire dans les 3 plans cachés.
+- `agents/system_prompts/plan.md` : prompt complètement réécrit
+  (anti-jargon, framing pré-cadrage, sources publiques uniquement).
+
+### Tests
+- `pytest backend/tests/` : **174 passed**, 26 skipped (DB-dependent).
+- Nouveaux tests : `test_plan_export.py` (6 passed, 1 skip weasyprint),
+  `test_agents_export_pdf.py` (4 passed, route + auth + body + version).
+- `npm run typecheck` : PASS.
+- `npm run build` : PASS, 2.6 MB / 762 KB gzip.
+
+### Vérifications visuelles
+- Preview MCP screenshots ont timeout (deck.gl WebGL sature en preview),
+  vérification programmatique DOM : Logo SVG présent ✅, RadarChart
+  polygon rendu ✅, lien ADEME absent (texte seul) ✅.
+- Test live SSE reconnect : **non effectué** (chantier 1 = patch défensif,
+  pas validé sur génération 60-120 s). Partenaire doit valider avant pitch.
+
+### Coût Anthropic cumulé session
+- `agents/sync.py --check` + `--dry-run` : ~0 € (GET only).
+- Tentative sync push : échoué sur bug pré-existant (TypeError) → 0 € de
+  call agent.
+- **Total session : 0 €**. Budget restant ≈ 6.5-7 €.
+
+### Issues rencontrées
+1. **Regex `\s{2,}` mangeait les newlines markdown** → restoration depuis
+   git + fix regex en `[ \t]{2,}` (newlines préservées).
+2. **`sync.py` bug `Agents.update() version`** : SDK Anthropic 0.103+ exige
+   `version` arg. **B-013** ouvert.
+3. **Cloudflare 403 sur observatoire-dpe-audit.ademe.fr** : URL non
+   vérifiable, lien retiré.
+4. **Preview MCP screenshots bloquent sur Projet.tsx + Stratégie** :
+   probablement WebGL/recharts animation lourde. Vérif DOM via eval()
+   confirme le rendu.
+
+### Prochaine étape
+- Partenaire teste 3 générations live SSE (CHANTIER 1 validation).
+- Partenaire valide visuellement les 3 plans cachés nettoyés (Wazemmes v1,
+  v2 chanvre, VL v1).
+- Fix `sync.py` (B-013) + re-push prompt si Anthropic API call jugé sûr.
+

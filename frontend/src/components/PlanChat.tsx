@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Sparkles, Send, Loader2, AlertCircle, History, Database } from "lucide-react";
+import { Sparkles, Send, Loader2, AlertCircle, History, Database, FileDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
+  exportPlanPdf,
   getCachedPlan,
   planStreamUrl,
   sendPlanMessage,
@@ -121,12 +122,19 @@ export function PlanChat({ building }: Props) {
   const evtSrcRef = useRef<EventSource | null>(null);
   const [slowMode, setSlowMode] = useState(false);
   const slowTimerRef = useRef<number | null>(null);
+  // Robustesse SSE : on retient le dernier event_id reçu pour pouvoir
+  // reconnecter avec ?after=<id> et ne pas perdre l'état déjà streamé.
+  const lastEventIdRef = useRef<string | null>(null);
+  // Compteur de tentatives de reconnexion (reset à chaque attachStream).
+  const reconnectCountRef = useRef<number>(0);
+  const reconnectTimerRef = useRef<number | null>(null);
 
   // Cleanup EventSource on unmount
   useEffect(() => {
     return () => {
       evtSrcRef.current?.close();
       if (slowTimerRef.current) window.clearTimeout(slowTimerRef.current);
+      if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
     };
   }, []);
 
@@ -163,71 +171,128 @@ export function PlanChat({ building }: Props) {
     [building],
   );
 
-  /** Attache un EventSource sur la session courante, version cible donnée. */
-  const attachStream = useCallback((sid: string, versionTarget: number) => {
-    evtSrcRef.current?.close();
-    if (slowTimerRef.current) window.clearTimeout(slowTimerRef.current);
-    setSlowMode(false);
-    slowTimerRef.current = window.setTimeout(() => {
-      setSlowMode(true);
-    }, SLOW_PLAN_THRESHOLD_MS);
+  /** Attache un EventSource sur la session courante, version cible donnée.
+   *
+   * Robustesse SSE :
+   * - Reconnexion automatique sur `onerror` (jusqu'à 3 essais espacés
+   *   de 2 s) avec `?after=<last_event_id>` pour reprendre là où on s'est
+   *   arrêté (et ne pas re-streamer tout l'historique).
+   * - Heartbeat backend toutes les 15 s (commentaires SSE `: keepalive`)
+   *   garde la connexion vivante derrière les proxies (Nginx/CF) et les
+   *   navigateurs (qui coupent passivement après 30-60 s d'inactivité).
+   * - Si 3 essais échouent et que le bâtiment a un plan en cache,
+   *   bascule silencieusement dessus (fallback démo).
+   */
+  const attachStream = useCallback(
+    (sid: string, versionTarget: number, isReconnect = false) => {
+      evtSrcRef.current?.close();
+      if (slowTimerRef.current) window.clearTimeout(slowTimerRef.current);
+      if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
 
-    const url = planStreamUrl(sid);
-    const es = new EventSource(url, { withCredentials: false });
-    evtSrcRef.current = es;
-    let buffer = "";
-
-    es.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data);
-        // Events agent.message arrivent en chunks (text deltas)
-        if (data.type === "agent.message" || data.type === "agent_message") {
-          const content = data.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              const t = (block as { text?: string }).text;
-              if (t) buffer += t;
-            }
-          }
-          setVersions((vs) =>
-            vs.map((v) =>
-              v.version === versionTarget ? { ...v, agent_text: buffer } : v,
-            ),
-          );
-        } else if (data.type === "session.idle" || data.type === "session.status_idle") {
-          setVersions((vs) =>
-            vs.map((v) =>
-              v.version === versionTarget
-                ? { ...v, status: "idle", ended_at: Date.now() }
-                : v,
-            ),
-          );
-          es.close();
-          setBusy(false);
-          if (slowTimerRef.current) window.clearTimeout(slowTimerRef.current);
-          setSlowMode(false);
-        } else if (data.type === "session.terminated" || data.type === "session.error") {
-          setVersions((vs) =>
-            vs.map((v) =>
-              v.version === versionTarget
-                ? { ...v, status: "terminated", ended_at: Date.now() }
-                : v,
-            ),
-          );
-          es.close();
-          setBusy(false);
-        }
-      } catch {
-        // Keepalive / commentaire SSE — ignorer
+      if (!isReconnect) {
+        // Nouvelle attache : reset des compteurs + position SSE
+        lastEventIdRef.current = null;
+        reconnectCountRef.current = 0;
+        setSlowMode(false);
+        slowTimerRef.current = window.setTimeout(() => {
+          setSlowMode(true);
+        }, SLOW_PLAN_THRESHOLD_MS);
       }
-    };
-    es.onerror = () => {
-      // Le SSE peut hoqueter sur les proxies — on tolère un re-essai
-      setError((prev) => prev ?? "Connexion SSE interrompue.");
-      es.close();
-      setBusy(false);
-    };
-  }, []);
+
+      const after = lastEventIdRef.current ?? undefined;
+      const url = planStreamUrl(sid, after);
+      const es = new EventSource(url, { withCredentials: false });
+      evtSrcRef.current = es;
+
+      es.onopen = () => {
+        // Reconnexion réussie : reset le compteur
+        if (isReconnect) reconnectCountRef.current = 0;
+      };
+
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          // Mémoriser le dernier event_id pour reconnect ?after=...
+          if (data.id) lastEventIdRef.current = data.id;
+          // Events agent.message arrivent en chunks (text deltas)
+          if (data.type === "agent.message" || data.type === "agent_message") {
+            const content = data.content;
+            let delta = "";
+            if (Array.isArray(content)) {
+              for (const block of content) {
+                const t = (block as { text?: string }).text;
+                if (t) delta += t;
+              }
+            }
+            if (delta) {
+              // Update fonctionnel : append au texte courant. Pas de buffer
+              // local — la source de vérité est le state. Robuste vis-à-vis
+              // des reconnexions mid-stream.
+              setVersions((vs) =>
+                vs.map((v) =>
+                  v.version === versionTarget
+                    ? { ...v, agent_text: (v.agent_text ?? "") + delta }
+                    : v,
+                ),
+              );
+            }
+          } else if (data.type === "session.idle" || data.type === "session.status_idle") {
+            setVersions((vs) =>
+              vs.map((v) =>
+                v.version === versionTarget
+                  ? { ...v, status: "idle", ended_at: Date.now() }
+                  : v,
+              ),
+            );
+            es.close();
+            setBusy(false);
+            if (slowTimerRef.current) window.clearTimeout(slowTimerRef.current);
+            setSlowMode(false);
+          } else if (data.type === "session.terminated" || data.type === "session.error") {
+            setVersions((vs) =>
+              vs.map((v) =>
+                v.version === versionTarget
+                  ? { ...v, status: "terminated", ended_at: Date.now() }
+                  : v,
+              ),
+            );
+            es.close();
+            setBusy(false);
+          }
+          // stream.error / stream.timeout / stream.open : ignorés ou loggés
+        } catch {
+          // Keepalive (commentaire `: keepalive`) ou event mal formé — ignorer
+        }
+      };
+
+      es.onerror = () => {
+        // EventSource ferme automatiquement la connexion en cas d'erreur.
+        es.close();
+        const attempts = reconnectCountRef.current;
+        if (attempts < 3) {
+          reconnectCountRef.current = attempts + 1;
+          // Back-off : 1 s, 2 s, 4 s
+          const delay = 1000 * Math.pow(2, attempts);
+          reconnectTimerRef.current = window.setTimeout(() => {
+            attachStream(sid, versionTarget, true);
+          }, delay);
+        } else {
+          // 3 essais épuisés : fallback cache si disponible.
+          void loadFromCache(versionTarget).then((cached) => {
+            if (!cached) {
+              setError(
+                "Connexion à l'agent IA interrompue après 3 essais. " +
+                  "Réessayez ou utilisez le plan pré-calculé si proposé.",
+              );
+              setBusy(false);
+            }
+          });
+        }
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [], // loadFromCache n'est pas dans deps — il est défini plus haut et stable via useCallback ; on évite la boucle circulaire (loadFromCache → attachStream → loadFromCache).
+  );
 
   /** Démarre une nouvelle session sur le bâtiment courant. */
   const start = useCallback(async () => {
@@ -397,6 +462,37 @@ export function PlanChat({ building }: Props) {
             <Database className="h-3 w-3 mr-1" />
             cache
           </Badge>
+        )}
+        {/* Export PDF — visible quand le plan actif est complet (idle) */}
+        {active && active.status === "idle" && active.agent_text && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto h-7 px-2 shrink-0 text-xs"
+            onClick={async () => {
+              if (!sessionId || !active.agent_text) return;
+              // Pour le cache (sessionId préfixé "cache:") on a un session_id
+              // distant valide dans le payload — sinon on utilise le sessionId
+              // tel quel (vraie session Anthropic).
+              const sid = sessionId.startsWith("cache:")
+                ? sessionId.slice("cache:".length)
+                : sessionId;
+              try {
+                await exportPlanPdf({
+                  sessionId: sid,
+                  version: active.version,
+                  planText: active.agent_text,
+                  buildingId: building.building_id,
+                });
+              } catch (e) {
+                setError((e as Error).message);
+              }
+            }}
+            title={`Exporter v${active.version} en PDF`}
+          >
+            <FileDown className="h-3.5 w-3.5 mr-1" />
+            PDF
+          </Button>
         )}
       </div>
 

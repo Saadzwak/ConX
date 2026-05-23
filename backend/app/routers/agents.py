@@ -555,57 +555,127 @@ async def stream_plan(
         last_id: str | None = after
         loop_start = asyncio.get_running_loop().time()
         last_keepalive = loop_start
+        total_events = 0
+        poll_iter = 0
+        consecutive_errors = 0  # circuit-breaker
 
         # Envoyer un premier "ping" pour ouvrir le canal côté browser
         yield serialize_event_for_sse({"type": "stream.open", "session_id": session_id})
+        logger.info(
+            "[SSE %s] stream.open after=%s",
+            session_id, last_id,
+        )
 
         while True:
             now = asyncio.get_running_loop().time()
-            if now - loop_start > MAX_STREAM_DURATION_S:
+            elapsed = now - loop_start
+            if elapsed > MAX_STREAM_DURATION_S:
+                logger.info(
+                    "[SSE %s] timeout after %.1fs (%d events streamed)",
+                    session_id, elapsed, total_events,
+                )
                 yield serialize_event_for_sse(
                     {"type": "stream.timeout", "after_s": MAX_STREAM_DURATION_S}
                 )
                 return
 
-            # Récupérer les events depuis `last_id`
+            # Récupérer les events depuis `last_id` — on tolère des erreurs
+            # transitoires (rate-limit, hoquet réseau) jusqu'à 3 fois de suite
+            # avant d'abandonner. Le frontend a son propre retry via le param
+            # ?after=<last_id>.
             try:
                 events = await asyncio.to_thread(list_events, session_id, last_id)
+                consecutive_errors = 0
             except HTTPException as exc:
-                yield serialize_event_for_sse(
-                    {"type": "stream.error", "detail": exc.detail, "status": exc.status_code}
+                consecutive_errors += 1
+                logger.warning(
+                    "[SSE %s] list_events HTTPException #%d (%d): %s",
+                    session_id, consecutive_errors, exc.status_code, exc.detail,
                 )
-                return
-            except Exception as exc:  # -- on relaie l'erreur au browser
-                logger.exception("Erreur stream events session %s", session_id)
-                yield serialize_event_for_sse(
-                    {"type": "stream.error", "detail": str(exc)}
+                if consecutive_errors >= 3:
+                    yield serialize_event_for_sse(
+                        {"type": "stream.error", "detail": exc.detail, "status": exc.status_code, "last_event_id": last_id}
+                    )
+                    return
+                # Heartbeat + back-off doux, on retente
+                yield keepalive_event()
+                last_keepalive = now
+                await asyncio.sleep(POLL_INTERVAL_S * 2)
+                continue
+            except Exception as exc:  # -- on tolère 3 erreurs avant d'abandonner
+                consecutive_errors += 1
+                logger.exception(
+                    "[SSE %s] list_events Exception #%d (will retry %d more times)",
+                    session_id, consecutive_errors, max(0, 3 - consecutive_errors),
                 )
-                return
+                if consecutive_errors >= 3:
+                    yield serialize_event_for_sse(
+                        {"type": "stream.error", "detail": str(exc), "last_event_id": last_id}
+                    )
+                    return
+                yield keepalive_event()
+                last_keepalive = now
+                await asyncio.sleep(POLL_INTERVAL_S * 2)
+                continue
 
+            # Relayer les events au browser. Try/except autour de chaque event
+            # individuellement : un event au format inattendu ne casse pas la
+            # boucle entière.
             for e in events:
-                yield serialize_event_for_sse(e)
-                if e.get("id"):
-                    last_id = e["id"]
+                try:
+                    yield serialize_event_for_sse(e)
+                    if e.get("id"):
+                        last_id = e["id"]
+                    total_events += 1
+                except Exception as exc:
+                    logger.warning(
+                        "[SSE %s] event serialize failed (skipped): %s — event_type=%s",
+                        session_id, exc, e.get("type", "?"),
+                    )
+                    continue
 
             # Vérifier le status de la session (idle = on s'arrête)
             try:
                 sess = await asyncio.to_thread(retrieve_session, session_id)
             except HTTPException as exc:
-                yield serialize_event_for_sse(
-                    {"type": "stream.error", "detail": exc.detail}
+                # Si retrieve_session plante, on log et on continue (le polling
+                # events.list pourra capturer la fin sans nous dire le status).
+                logger.warning(
+                    "[SSE %s] retrieve_session HTTPException: %s — continuing",
+                    session_id, exc.detail,
                 )
-                return
+                sess = {"status": "unknown"}
+            except Exception as exc:
+                logger.warning(
+                    "[SSE %s] retrieve_session Exception: %s — continuing",
+                    session_id, exc,
+                )
+                sess = {"status": "unknown"}
 
             if sess["status"] in ("idle", "terminated", "error"):
+                logger.info(
+                    "[SSE %s] session.%s after %.1fs (%d events, %d polls)",
+                    session_id, sess["status"], elapsed, total_events, poll_iter,
+                )
                 yield serialize_event_for_sse(
                     {"type": f"session.{sess['status']}", "session_id": session_id}
                 )
                 return
 
-            # Keepalive
+            # Keepalive (toujours envoyé toutes les 15s même si pas d'event,
+            # garde la connexion vivante derrière proxies Nginx/CF et navigateurs).
             if now - last_keepalive > KEEPALIVE_INTERVAL_S:
                 yield keepalive_event()
                 last_keepalive = now
+
+            # Log structuré toutes les ~15 s (1 ligne par batch de polls)
+            poll_iter += 1
+            if poll_iter % 10 == 0:
+                logger.info(
+                    "[SSE %s] poll #%d elapsed=%.1fs total_events=%d status=%s last_id=%s",
+                    session_id, poll_iter, elapsed, total_events,
+                    sess.get("status", "?"), last_id,
+                )
 
             await asyncio.sleep(POLL_INTERVAL_S)
 
@@ -724,6 +794,169 @@ async def plan_history(
         for r in rows
     ]
     return PlanHistoryResponse(session_id=session_id, versions=versions)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/agents/plan/{session_id}/export-pdf?version=N
+# ---------------------------------------------------------------------------
+
+
+class PlanExportRequest(BaseModel):
+    """Si le frontend a déjà le texte du plan (cas SSE complet ou cache local),
+    il peut l'envoyer directement → on n'a pas besoin de re-fetch Anthropic.
+    Sinon, on essaie de récupérer le plan depuis la session Anthropic + le
+    cache."""
+    plan_text: str | None = Field(
+        None,
+        description="Texte markdown du plan. Si absent, le backend ira le chercher.",
+    )
+    building_id: str | None = Field(
+        None,
+        description=(
+            "ID BDNB du bâtiment (pour enrichir la couverture avec l'adresse). "
+            "Si absent et session connue côté Supabase, on l'y lit."
+        ),
+    )
+
+
+@router.post("/plan/{session_id}/export-pdf")
+async def export_plan_pdf(
+    session_id: str,
+    req: PlanExportRequest,
+    version: int,
+    user: Annotated[AuthUser, Depends(get_current_user)],
+    conn: Annotated[asyncpg.Connection, Depends(get_db)],
+) -> Any:
+    """Génère un PDF du plan v{version} et le retourne en application/pdf.
+
+    Source du markdown (par ordre de préférence) :
+      1. `req.plan_text` (frontend l'envoie ; cas nominal)
+      2. Cache local pré-calculé (`docs/demo_assets/cached_plans/`)
+      3. Persistance Supabase `app.renovation_plans` (legacy)
+
+    Enrichit la couverture avec l'adresse BAN et l'identifiant DPE
+    ADEME si on connaît le building_id (lookup `public_data.buildings` +
+    BDNB).
+    """
+    import io
+    from pathlib import Path
+
+    from fastapi.responses import StreamingResponse
+
+    from ..plan_export import render_plan_pdf
+
+    _ = user  # auth requise
+
+    # --- 1. Résoudre le markdown du plan
+    plan_text = req.plan_text
+    if not plan_text:
+        # Tentative cache local
+        try:
+            cached = await get_cached_plan(
+                req.building_id or "unknown", version
+            )
+            plan_text = cached.get("plan_text") if isinstance(cached, dict) else None
+        except HTTPException:
+            plan_text = None
+
+    if not plan_text:
+        # TODO : tentative Supabase renovation_plans (legacy, peu peuplé J18)
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Plan introuvable côté serveur. Envoyez `plan_text` dans le "
+                "body de la requête (le frontend l'a après le streaming)."
+            ),
+        )
+
+    # --- 2. Enrichir la couverture (adresse, commune, DPE ADEME)
+    building_id = req.building_id or "unknown"
+    cover_meta: dict[str, str | None] = {
+        "adresse_postale": None,
+        "commune_nom": None,
+        "dept": None,
+        "rnb_id": None,
+        "identifiant_dpe_ademe": None,
+        "bdnb_millesime": "2025-07.a",
+    }
+    if building_id and building_id != "unknown":
+        row = await conn.fetchrow(
+            """
+            SELECT b.rnb_id, b.dept, b.bdnb_millesime
+            FROM public_data.buildings b
+            WHERE b.building_id = $1
+            """,
+            building_id,
+        )
+        if row:
+            cover_meta["rnb_id"] = row["rnb_id"]
+            cover_meta["dept"] = row["dept"]
+            if row["bdnb_millesime"]:
+                cover_meta["bdnb_millesime"] = row["bdnb_millesime"]
+
+            # Adresse BAN + commune via BDNB (dépt-specific schema)
+            dept = row["dept"]
+            if dept and dept in {"02", "59", "60", "62", "80"}:
+                schema = f"bdnb_2025_07_a_open_data_dep{dept}"
+                try:
+                    enr = await conn.fetchrow(
+                        f"""
+                        SELECT
+                          a.libelle_adr_complete_ban AS adresse_postale,
+                          a.libelle_commune,
+                          dpe.identifiant_dpe AS identifiant_dpe_ademe
+                        FROM {schema}.rel_batiment_groupe_adresse rga
+                        LEFT JOIN {schema}.adresse a
+                          ON a.cle_interop_adr = rga.cle_interop_adr
+                        LEFT JOIN {schema}.batiment_groupe_dpe_representatif_logement dpe
+                          ON dpe.batiment_groupe_id = rga.batiment_groupe_id
+                        WHERE rga.batiment_groupe_id = $1
+                          AND rga.classe = 'Principale'
+                        LIMIT 1;
+                        """,
+                        building_id,
+                    )
+                    if enr:
+                        cover_meta["adresse_postale"] = enr.get("adresse_postale")
+                        cover_meta["commune_nom"] = enr.get("libelle_commune")
+                        cover_meta["identifiant_dpe_ademe"] = enr.get("identifiant_dpe_ademe")
+                except Exception as exc:
+                    # Si la BDNB n'a pas tout (ou schema unexpected), on continue
+                    logger.warning(
+                        "Enrichissement couverture échoué pour %s: %s",
+                        building_id, exc,
+                    )
+
+    # --- 3. Rendre le PDF dans un fichier temporaire
+    import tempfile
+
+    tmp_dir = Path(tempfile.gettempdir())
+    safe_id = building_id.replace("/", "_").replace("..", "_")
+    out_path = tmp_dir / f"conx_plan_{safe_id}_v{version}.pdf"
+    render_plan_pdf(
+        plan_markdown=plan_text,
+        building_id=building_id,
+        version=version,
+        output_path=out_path,
+        adresse_postale=cover_meta["adresse_postale"],
+        commune_nom=cover_meta["commune_nom"],
+        dept=cover_meta["dept"],
+        rnb_id=cover_meta["rnb_id"],
+        identifiant_dpe_ademe=cover_meta["identifiant_dpe_ademe"],
+        bdnb_millesime=cover_meta["bdnb_millesime"],
+    )
+
+    # --- 4. Stream le PDF au browser
+    pdf_bytes = out_path.read_bytes()
+    filename = f"ConX_pre-cadrage_{safe_id}_v{version}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-ConX-Plan-Version": str(version),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

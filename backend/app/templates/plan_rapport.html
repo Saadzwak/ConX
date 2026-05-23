@@ -79,10 +79,38 @@
       padding-top: 0.6cm;
       margin-top: 0.8cm;
     }
-    .cover-meta dt { font-weight: 600; color: #333; }
-    .cover-meta dd { margin: 0 0 0.4em 0; }
-    .cover-meta .row { display: flex; gap: 1.5cm; flex-wrap: wrap; }
-    .cover-meta .row > div { flex: 0 0 calc(50% - 0.75cm); }
+    /* WeasyPrint a une implémentation flexbox partielle qui collapse les
+       items mis côte à côte. CSS grid est mieux supporté (depuis
+       WeasyPrint 60+). Une rangée = 2 colonnes de meta-items. */
+    .cover-meta .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 1.5cm;
+      row-gap: 0.5em;
+    }
+    .cover-meta .grid > .meta-item {
+      break-inside: avoid;
+    }
+    .cover-meta dt {
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 0.15em;
+      display: block;
+      font-size: 9pt;
+    }
+    .cover-meta dd {
+      margin: 0;
+      padding: 0;
+      display: block;
+      color: #444;
+    }
+    .cover-meta dd code {
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 8.5pt;
+      background: rgba(255,255,255,0.6);
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
     .cover-disclaimer {
       margin-top: 1.5cm;
       padding: 0.6cm 0.8cm;
@@ -125,26 +153,34 @@
     .toc-item .num { color: #1c7c54; font-weight: 600; min-width: 1.3cm; }
 
     /* === Corps du document === */
-    .body-content { padding-top: 0.5cm; }
+    .body-content {
+      padding-top: 0.3cm;
+      page-break-before: always;
+    }
     .body-content h1 {
       color: #1c7c54;
       font-size: 18pt;
+      font-weight: 700;
       margin-top: 1.2em;
-      margin-bottom: 0.3em;
+      margin-bottom: 0.4em;
       page-break-after: avoid;
+      page-break-before: auto;
+      border-bottom: 2px solid #1c7c54;
+      padding-bottom: 0.2em;
     }
     .body-content h2 {
       color: #1c7c54;
-      font-size: 14pt;
+      font-size: 14.5pt;
+      font-weight: 700;
       border-bottom: 1.5px solid #c5d8c8;
       padding-bottom: 0.25em;
-      margin-top: 1.5em;
+      margin-top: 1.6em;
       margin-bottom: 0.5em;
       page-break-after: avoid;
     }
     .body-content h3 {
       font-size: 12pt;
-      font-weight: 600;
+      font-weight: 700;
       margin-top: 1.2em;
       margin-bottom: 0.4em;
       color: #2a4a3a;
@@ -155,57 +191,90 @@
       font-weight: 700;
       margin-top: 0.9em;
       margin-bottom: 0.3em;
-      color: #444;
+      color: #555;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.6px;
+      page-break-after: avoid;
     }
-    .body-content p { margin: 0.4em 0; }
+    .body-content p {
+      margin: 0.5em 0;
+      orphans: 3;
+      widows: 3;
+    }
     .body-content ul, .body-content ol {
-      margin: 0.4em 0 0.6em 0;
-      padding-left: 1.4em;
+      margin: 0.5em 0 0.7em 0;
+      padding-left: 1.5em;
     }
-    .body-content li { margin: 0.15em 0; }
-    .body-content strong { color: #1a1a1a; }
+    .body-content li {
+      margin: 0.25em 0;
+      page-break-inside: avoid;
+    }
+    .body-content li p { margin: 0.1em 0; }
+    .body-content strong {
+      color: #1a1a1a;
+      font-weight: 700;
+    }
+    .body-content em { font-style: italic; }
     .body-content blockquote {
-      border-left: 3px solid #1c7c54;
+      border-left: 4px solid #1c7c54;
       background: #f0f7f3;
-      padding: 0.4em 0.8em;
-      margin: 0.8em 0;
+      padding: 0.6em 1em;
+      margin: 1em 0;
       color: #2a4a3a;
-      font-style: italic;
+      font-style: normal;
+      border-radius: 0 4px 4px 0;
+      page-break-inside: avoid;
     }
+    .body-content blockquote p { margin: 0.2em 0; }
+    .body-content blockquote strong { color: #1c7c54; }
     .body-content code {
-      background: #f4f4f4;
-      padding: 1px 4px;
+      background: #eef4ee;
+      padding: 1px 5px;
       border-radius: 3px;
-      font-family: 'Menlo', 'Courier New', monospace;
-      font-size: 9.5pt;
+      font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+      font-size: 9pt;
       color: #1c7c54;
+      border: 1px solid #d6e6da;
     }
     .body-content hr {
       border: none;
       border-top: 1px solid #d0d0d0;
-      margin: 1.2em 0;
+      margin: 1.5em 0;
     }
     .body-content table {
       width: 100%;
       border-collapse: collapse;
-      margin: 0.8em 0;
+      margin: 1em 0;
       font-size: 9.5pt;
       page-break-inside: avoid;
+      box-shadow: 0 0 0 1px #e0e8e2;
+      border-radius: 3px;
+      overflow: hidden;
     }
+    .body-content thead { display: table-header-group; }
+    .body-content tbody { display: table-row-group; }
     .body-content th {
       background: #1c7c54;
       color: white;
-      padding: 0.4em 0.6em;
+      padding: 0.5em 0.7em;
       text-align: left;
       font-weight: 600;
+      font-size: 9.5pt;
+      border-bottom: 2px solid #155a3e;
     }
     .body-content td {
-      padding: 0.35em 0.6em;
-      border-bottom: 1px solid #e0e0e0;
+      padding: 0.4em 0.7em;
+      border-bottom: 1px solid #e0e8e2;
+      vertical-align: top;
     }
     .body-content tr:nth-child(even) td { background: #f7faf8; }
+    .body-content tr:last-child td { border-bottom: none; }
+    /* Aligner les colonnes numériques à droite si la cellule est purement
+       numérique (heuristique : seul un montant avec € / % / nombre). */
+    .body-content td:last-child,
+    .body-content th:last-child { text-align: right; }
+    .body-content th:first-child,
+    .body-content td:first-child { text-align: left; }
 
     /* === Dernière page : sources === */
     .sources-page {
@@ -249,34 +318,34 @@
     <div class="cover-subtitle">{{ adresse_postale or building_id }}</div>
 
     <dl class="cover-meta">
-      <div class="row">
-        <div>
+      <div class="grid">
+        <div class="meta-item">
           <dt>Identifiant bâti BDNB</dt>
           <dd><code>{{ building_id }}</code></dd>
         </div>
         {% if rnb_id %}
-        <div>
+        <div class="meta-item">
           <dt>Référentiel National Bâtiment (RNB)</dt>
           <dd><code>{{ rnb_id }}</code></dd>
         </div>
         {% endif %}
         {% if commune_nom %}
-        <div>
+        <div class="meta-item">
           <dt>Commune</dt>
           <dd>{{ commune_nom }}{% if dept %} ({{ dept }}){% endif %}</dd>
         </div>
         {% endif %}
         {% if identifiant_dpe_ademe %}
-        <div>
+        <div class="meta-item">
           <dt>Identifiant DPE ADEME</dt>
           <dd><code>{{ identifiant_dpe_ademe }}</code></dd>
         </div>
         {% endif %}
-        <div>
+        <div class="meta-item">
           <dt>Version du pré-cadrage</dt>
           <dd>{{ version_label }}</dd>
         </div>
-        <div>
+        <div class="meta-item">
           <dt>Date de génération</dt>
           <dd>{{ generated_at }}</dd>
         </div>

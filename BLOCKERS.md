@@ -655,3 +655,32 @@ s'appuie principalement sur le cache. Si live nécessaire, le partenaire
 peut éditer le prompt directement dans la console Anthropic
 (https://console.anthropic.com/), copier le contenu de
 `agents/system_prompts/plan.md`.
+
+---
+
+## B-013 RÉSOLU 2026-05-23
+
+Fix : SDK Anthropic 0.96+ exige `version: int` keyword-only sur
+`agents.update()`. On retrieve d'abord pour obtenir la version courante,
+puis on update avec cet entier.
+
+Code de fix dans `agents/sync.py:sync_agents()` :
+
+```python
+current = client.beta.agents.retrieve(agent_id=agent_id)
+current_version = getattr(current, "version", None)
+updated = client.beta.agents.update(
+    agent_id=agent_id,
+    version=current_version,
+    **update_kwargs,
+)
+```
+
+Conséquence : les 3 agents (conx-selection, conx-plan, conx-conformite)
+sont passés de v1 → v2. Le nouveau system prompt anti-jargon de
+`agents/system_prompts/plan.md` est désormais actif côté Anthropic.
+
+Vérification : `client.beta.agents.retrieve(agent_id).system` contient
+bien les nouvelles instructions ("Tu rédiges comme un cabinet
+d'architecte ou un BE thermicien").
+

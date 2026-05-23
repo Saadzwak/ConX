@@ -255,3 +255,62 @@ python agents/test_ttl.py --agent conx-plan --wait-min 10
 - Décisions : `DECISIONS.md` D-005, D-009, D-011, D-012, D-013
 - Système prompts : `agents/system_prompts/plan.md`
 - Bloqueurs : B-001 (TTL session), B-009 (Skills upload), B-010 (carbon-calc bundle)
+
+---
+
+## 9. Mises à jour Session 17 (2026-05-23)
+
+### Refonte fiche bâtiment en dashboard hiérarchisé (D-024)
+
+La fiche Mode Projet est désormais composée d'une **fiche compacte** par
+défaut (score circle animé en count-up, badges contextuels, DPE source,
+RadarChart pentagone des 5 composantes, 3 BigStat impacts 30 ans) +
+d'un bouton **« Voir tout le dashboard »** qui déplie 6 sections
+expert :
+- A. Diagnostic technique (U-values + systèmes + déperditions)
+- B. Conso réelle 7 ans (LineChart Recharts élec+gaz)
+- C. Distribution DPE par logement (RPLS barre stackée)
+- D. Coût énergie + classement IRIS/commune (lazy fetch `/rank`)
+- E. Aides éligibles (MaPrimeRénov', CEE, Fonds Vert, surprime AC1)
+- F. Risques + Urbanisme (servitudes, MH, SPR, PMR)
+
+Tooltips pédagogiques sur les sigles (QPV, AC1, RPLS, RCU, PMR, MH) via
+attribut `title` natif HTML.
+
+### Export PDF du plan IA (CHANTIER 3 + fix Session 17)
+
+Bouton **« PDF »** dans le PlanChat sur chaque chip de version (visible
+quand `status === 'idle'` et un texte est présent). Le clic :
+1. Frontend → `POST /api/agents/plan/<sid>/export-pdf?version=N` avec
+   `{ plan_text, building_id }` dans le body.
+2. Backend `app/plan_export.py` :
+   - Strip d'un éventuel fence ` ```markdown ... ``` ` ajouté par l'agent.
+   - Conversion markdown → HTML via `python-markdown 3.7` (extensions
+     `tables`, `fenced_code`, `nl2br`, `sane_lists`, `attr_list`).
+   - Rendu via template Jinja2 `plan_rapport.html` (couverture +
+     sommaire auto + corps stylé + sources + mention légale).
+   - Génération PDF via WeasyPrint.
+3. Réponse `application/pdf` streamée + déclenche un download via blob
+   URL côté frontend.
+
+**Coverage enrichie** : adresse BAN, identifiant DPE ADEME, RNB, commune
+récupérés via lookup BDNB (whitelist dpts 02/59/60/62/80).
+
+3 PDF de référence générés dans `docs/demo_assets/pdf/` (Wazemmes v1,
+Wazemmes v2 chanvre, Vieux-Lille v1).
+
+### Live par défaut, cache en fallback (D-026)
+
+Le pitch utilise la **génération LIVE Anthropic par défaut**. Le bouton
+« Utiliser le plan pré-calculé » reste visible comme filet de sécurité
+en cas de timeout Anthropic ou rate limit. Le system prompt agent
+(`agents/system_prompts/plan.md`) est désormais effectivement poussé
+côté Anthropic après le fix B-013.
+
+### Robustesse SSE (Session 16)
+
+- Backend : circuit-breaker 3 erreurs, log structuré, try/except par event.
+- Frontend : reconnect 3 essais avec `?after=<last_event_id>` (back-off
+  1s/2s/4s), fallback automatique sur cache à l'épuisement.
+- Message d'erreur reformulé non-anxiogène (« L'agent prend plus de
+  temps que prévu… ») au lieu de « Connexion SSE interrompue ».

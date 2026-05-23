@@ -1346,3 +1346,119 @@ ADEME vérifiée, logo SVG, polish design. Mode boucle continue.
   v2 chanvre, VL v1).
 - Fix `sync.py` (B-013) + re-push prompt si Anthropic API call jugé sûr.
 
+
+---
+
+## 2026-05-23 — Session 17 (Fix B-013 + PDF rendering critique + regen live)
+
+### Contexte
+Saad teste en live et signale 2 bugs critiques bloquants pour le pitch :
+1. Le plan généré contient du jargon SKILL.md / D-014 / B-010 →
+   l'agent live n'a pas le nouveau prompt (B-013 non vraiment résolu).
+2. Le PDF exporté affiche du markdown brut (** ## | >) → conversion
+   markdown cassée.
+
+### Diagnostic 1 — B-013
+SDK Anthropic 0.96 exige `agents.update(agent_id, *, version: int, ...)`.
+Le `version` est un concurrency token (équivalent If-Match HTTP) qui doit
+être récupéré via `agents.retrieve(agent_id)` juste avant l'update.
+Confirmé par introspection `inspect.signature(client.beta.agents.update)`.
+
+### Diagnostic 2 — PDF rendering
+`docker exec conx_backend python -c "import markdown"` → ModuleNotFoundError.
+La lib `markdown==3.7` avait été ajoutée à `backend/requirements.txt`
+session 16 mais le container Docker n'avait jamais été rebuild. Le code
+tombait dans le fallback minimal de `_markdown_to_html` qui ne gérait
+quasiment rien.
+
+### Modifs structurelles
+- `agents/sync.py` : fix `sync_agents()` avec retrieve + version. **3
+  agents passés v1 → v2**. Nouveau system prompt actif côté Anthropic.
+- `backend/app/plan_export.py` :
+  * Helper `_fallback_markdown_to_html` complètement réécrit (~110 lignes)
+    pour supporter tables/blockquote/listes/gras même sans `markdown` lib.
+    Garde-fou : si quelqu'un rebuild un container sans markdown, ne
+    produit JAMAIS de markdown brut dans le PDF.
+  * Helper `_strip_code_fence_wrapper` pour retirer ` ```markdown ... ``` `
+    que l'agent ajoute parfois autour de sa sortie complète.
+- `backend/app/templates/plan_rapport.html` : CSS corps document
+  enrichi — headers verts hiérarchisés, tableaux avec en-tête vert ConX
+  + alternating rows, blockquote vert avec border-left épaisse, code
+  inline stylé, sauts de page intelligents (h1 page-break-before, tables
+  page-break-inside: avoid, orphans/widows 3).
+- `scripts/precalc_plans.py` :
+  * `_strip_code_fence()` côté précalc → les JSON sauvés sont propres.
+  * Prompt utilisateur aligné avec le nouveau system prompt (pré-cadrage
+    modulaire, sources publiques uniquement).
+- `scripts/archive/clean_cached_plans.py.deprecated` : ancien script
+  regex archivé + README explicatif (à ne plus relancer).
+- `docker compose build backend` : rebuild forcé. `markdown 3.7` +
+  `anthropic 0.103.1` désormais dans le container.
+
+### Polish secondaire (CHANTIER 4)
+- `frontend/public/favicon.svg` : favicon SVG ConX (carré vert arrondi,
+  "Cx" blanc bold).
+- `frontend/index.html` : preconnect Google Fonts + Inter (400/500/600/
+  700/800) + display=swap, description meta améliorée, titre Page mis à
+  jour ("Pré-cadrage rénovation hors-site biosourcée · HDF").
+- `frontend/tailwind.config.js` : `fontFamily.sans = ['Inter', ...]`.
+  Toute l'app passe en Inter via les classes Tailwind existantes.
+- `frontend/src/pages/Projet.tsx` :
+  * Skeleton loader `ProjetSkeleton` (mimétique de la mise en page :
+    map placeholder + dashboard 7 sections avec dimensions correctes,
+    `animate-pulse bg-muted`) à la place du spinner basique.
+- `frontend/src/components/PlanChat.tsx` : message d'erreur SSE
+  reformulé non-anxiogène : « L'agent prend plus de temps que prévu.
+  Vous pouvez patienter ou revenir au menu pour utiliser un plan
+  pré-calculé si disponible. »
+
+### Re-génération live des 3 plans
+`PYTHONIOENCODING=utf-8 python scripts/precalc_plans.py` (sans --only) :
+- wazemmes-v1 : sesn_01R3vEekDzE7YUYtpmABk5Uu, 11760 chars, 11:52 UTC
+- wazemmes-v2 : sesn_01NbXWdQgjWCfjpoJKoYRpi3, 14929 chars, 11:58 UTC
+- vieux-lille-v1 : sesn_015Vh25aZiwK6ZveRdxmND5j, 12806 chars, 12:03 UTC
+
+Vérification programmatique : zéro mention parmi les 15 patterns
+interdits (TBC-J9, horssite-biosource, re2020-target, carbon-calc, etc.).
+Tous portent le préambule pré-cadrage modulaire.
+
+### PDF de référence
+3 PDF générés via docker exec dans `/tmp` puis copiés dans
+`docs/demo_assets/pdf/` :
+- `ConX_pre-cadrage_Wazemmes_v1.pdf` (54.8 KB, 9 pages)
+- `ConX_pre-cadrage_Wazemmes_v2_chanvre.pdf` (61.4 KB)
+- `ConX_pre-cadrage_Vieux-Lille_v1.pdf` (56 KB)
+
+Inspection visuelle pages 3-4 Wazemmes v1 : couverture pro, sommaire
+auto, blockquote vert pour préambule + DPE source réel, headers verts
+hiérarchisés, listes proprement indentées, bold rendu, footer numéroté
+« Page 3 / 9 ». Pas un seul caractère markdown brut visible.
+
+### Tests
+- `pytest backend/tests/` : 174 passed, 26 skipped (DB-dependent).
+- `npm run typecheck` : PASS.
+- `npm run build` : PASS (2.6 MB / 762 KB gzip).
+
+### Coût Anthropic cumulé session
+- 3 régénérations Anthropic complètes : ~1.5-2 €.
+- Total session ≈ **2 €**. Budget cumulé global ≈ 5-6 € sur cap 20 €
+  (largement OK).
+
+### Issues rencontrées
+1. Container Docker mounted /app en read-only → impossible d'écrire les
+   PDF dans `docs/demo_assets/pdf/` depuis `docker exec`. Workaround :
+   écrire dans `/tmp` puis `docker cp` pour récupérer.
+2. Wazemmes v1 a été sauvé AVANT que j'ajoute le strip de fence dans
+   precalc_plans.py → fence présent dans le JSON sauvé. Strip manuel
+   appliqué ensuite (pas de re-gen Anthropic nécessaire).
+3. Background bash task `python scripts/precalc_plans.py` n'écrivait
+   pas son stdout dans le fichier de log (Python buffering) — mais le
+   process tournait bien (vérifié via `tasklist`).
+
+### Prochaine étape
+- Partenaire teste un export PDF via l'UI ConX (bouton « PDF » sur
+  PlanChat) pour valider la chaîne complète frontend → backend → PDF.
+- Partenaire teste une génération live SSE sur un bâtiment non-caché
+  (validation CHANTIER 1 robustesse SSE de la session 16).
+- Pitch rehearsal possible.
+

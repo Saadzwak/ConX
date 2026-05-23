@@ -277,12 +277,14 @@ export function PlanChat({ building }: Props) {
             attachStream(sid, versionTarget, true);
           }, delay);
         } else {
-          // 3 essais épuisés : fallback cache si disponible.
+          // 3 essais épuisés : fallback cache si disponible (silencieusement).
+          // Sinon, message non-anxiogène en proposant le plan pré-calculé.
           void loadFromCache(versionTarget).then((cached) => {
             if (!cached) {
               setError(
-                "Connexion à l'agent IA interrompue après 3 essais. " +
-                  "Réessayez ou utilisez le plan pré-calculé si proposé.",
+                "L'agent prend plus de temps que prévu. " +
+                  "Vous pouvez patienter ou revenir au menu pour utiliser un " +
+                  "plan pré-calculé si disponible.",
               );
               setBusy(false);
             }

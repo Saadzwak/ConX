@@ -127,6 +127,25 @@ sur le **plan v1 pré-calculé en cache** (cf. fallback §3).
 - Plan v1 stream : premier token < 5 s, plan complet < 90 s.
 - Plan v2 stream : premier token < 5 s, plan complet < 60 s.
 
+**Mise à jour 2026-05-23 (D-026)** — la démo utilise désormais la
+**génération LIVE par défaut**. Le cache n'est servi que si la
+génération live échoue après 3 essais de reconnexion SSE (cf.
+PlanChat.tsx). Saad peut aussi déclencher manuellement le cache via le
+bouton « Utiliser le plan pré-calculé » s'il sent que l'agent prend trop
+de temps. **Effet pitch** : Saad commence sur un bâtiment quelconque de
+Lille (PAS Wazemmes pré-cachée) → ça démontre que ça marche en live sur
+n'importe quel bâtiment du parc.
+
+**Export PDF** : à la fin de la génération, un bouton « PDF » apparaît à
+côté du chip de version (v1, v2, ...). Saad peut cliquer pendant la
+démo pour montrer le livrable PDF type cabinet (couverture + sommaire +
+corps stylé + sources). Le PDF se télécharge en ~2 s.
+
+**Fallback PDF de référence** : `docs/demo_assets/pdf/` contient 3 PDF
+pré-générés (Wazemmes v1, v2 chanvre, Vieux-Lille v1) que Saad peut
+ouvrir directement depuis son fichier explorer si tout plante côté
+backend.
+
 ### Acte 3 — 3:45 → 4:30 — Mode Conformité IFC
 
 **Écran** : Cliquer sur "Conformité IFC" dans la nav top.

@@ -918,3 +918,60 @@ valider par le partenaire avant le pitch :
   espaces/tabs, jamais newlines. Bug rencontré et corrigé dans
   `scripts/clean_cached_plans.py`.
 
+
+---
+
+## D-026 — Démo en LIVE par défaut + plans cachés en fallback (2026-05-23)
+
+**Date** : 2026-05-23
+**Statut** : appliqué
+**Contexte** : ré-arbitrage de l'usage du cache après push effectif du
+nouveau system prompt agent (B-013 résolu).
+
+### Décision
+
+Le pitch de 5 min Mode Projet **utilise la génération LIVE Anthropic par
+défaut**. Le cache (`docs/demo_assets/cached_plans/`) est positionné en
+**fallback de sécurité uniquement** (R7/R8 : Anthropic down, latence
+> 90s, rate limit).
+
+Conséquence UX :
+- Le bouton « Générer un plan rénovation IA » reste l'action primaire.
+- Le bouton « Utiliser le plan pré-calculé » reste visible MAIS sa mention
+  reste discrète (cache = backup, pas chemin nominal).
+- Le message d'erreur SSE est reformulé non-anxiogène : « L'agent prend
+  plus de temps que prévu. Vous pouvez patienter ou revenir au menu pour
+  utiliser un plan pré-calculé si disponible. »
+
+### Raison
+
+Le rendu pitch d'une **génération en direct** (60-120 s de streaming
+SSE token-par-token) est le wow moment principal. Servir d'emblée un
+plan caché tuerait la démonstration de l'IA-en-action. Le cache reste
+indispensable comme filet de sécurité (Anthropic peut tomber pendant la
+démo, ngrok peut hoqueter, etc.).
+
+### Pré-requis techniques validés ce jour
+
+- **B-013 résolu** : `agents/sync.py` poussé avec succès, l'agent live
+  `conx-plan` est en version 2 avec le nouveau system prompt anti-jargon.
+  Vérifié via `client.beta.agents.retrieve(agent_id).system` qui contient
+  bien « Tu rédiges comme un cabinet d'architecte ou un BE thermicien ».
+- **3 plans cachés regénérés en LIVE** via `scripts/precalc_plans.py`
+  (Wazemmes v1, v2 chanvre, Vieux-Lille v1). Zéro jargon résiduel
+  vérifié programmatiquement sur les 15 patterns interdits (TBC-J9,
+  horssite-biosource, re2020-target, carbon-calc, fdes-lookup, base ConX,
+  CARBON.md, SKILL.md, D-014, D-010, B-010, B-006, pmr-checks, ifc-check,
+  XXX-001).
+- **PDF export fonctionnel** : `markdown==3.7` dans le container Docker,
+  weasyprint OK, template Jinja2 enrichi (CSS pro, sauts de page,
+  tableaux stylés, blockquote vert, hiérarchie de titres). 3 PDF de
+  référence dans `docs/demo_assets/pdf/`.
+
+### Anti-pattern résolu
+
+L'agent peut wrapper sa sortie complète dans un fence ` ```markdown ...
+``` `. Si on n'enlève pas le fence avant conversion HTML, tout le plan
+se retrouve rendu en bloc de code monospace dans le PDF. `_strip_code_fence`
+ajouté dans `plan_export.py` ET `precalc_plans.py` (idempotent).
+

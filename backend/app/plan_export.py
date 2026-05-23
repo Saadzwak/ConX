@@ -72,16 +72,23 @@ def _extract_toc(markdown_text: str) -> list[dict[str, str]]:
 def _markdown_to_html(markdown_text: str) -> str:
     """Convertit le markdown en HTML.
 
-    Préfère `markdown` (avec extension `tables`, `fenced_code`) si dispo,
-    sinon `markdown-it-py`, sinon fallback minimal (paragraphes + sauts).
-    Toutes ces libs sont des wheels purement Python, légères.
+    Priorité :
+      1. `markdown` (Python-Markdown, extensions tables + fenced_code + nl2br
+         + sane_lists + attr_list) — rendu complet GFM-compatible.
+      2. `markdown-it-py` (CommonMark + tables + breaks).
+      3. Fallback minimal — TOUJOURS gère gras/italique/listes/tableaux/
+         blockquotes (sinon le PDF affiche du markdown brut, cf. CHANTIER 2
+         brief Saad 2026-05-23).
+
+    Si on tombe dans le fallback, on log un WARNING explicite — l'env du
+    container Docker est probablement cassé (markdown pas installé).
     """
     try:
         import markdown  # type: ignore
 
         return markdown.markdown(
             markdown_text,
-            extensions=["tables", "fenced_code", "sane_lists", "nl2br"],
+            extensions=["tables", "fenced_code", "sane_lists", "nl2br", "attr_list"],
         )
     except ImportError:
         pass
@@ -96,31 +103,191 @@ def _markdown_to_html(markdown_text: str) -> str:
     except ImportError:
         pass
 
-    # Fallback ultra minimal : on tente quand même de rendre quelque chose.
-    logger.warning(
-        "Ni `markdown` ni `markdown-it-py` disponibles — fallback rendu minimal.",
+    # Fallback robuste — supporte tableaux pipe, blockquotes, listes, gras,
+    # italique. Ne couvre pas les fenced code blocks. À utiliser en dernier
+    # recours si la prod tourne sans `markdown` dans le venv.
+    logger.error(
+        "Ni `markdown` ni `markdown-it-py` disponibles dans l'env Python. "
+        "Le PDF sera rendu via fallback dégradé. Installer `markdown==3.7` "
+        "dans le container (backend/requirements.txt + rebuild).",
     )
-    paragraphs = markdown_text.split("\n\n")
-    html_paragraphs = []
-    for p in paragraphs:
-        p = p.strip()
-        if not p:
+    return _fallback_markdown_to_html(markdown_text)
+
+
+def _fallback_markdown_to_html(text: str) -> str:
+    """Rendu markdown minimaliste sans lib externe — supporte :
+       - h1/h2/h3/h4
+       - gras **x**, italique *x*
+       - listes - et 1.
+       - blockquotes >
+       - tableaux pipe (| col | col |)
+       - séparateurs ---
+
+    L'objectif est de ne JAMAIS produire de markdown brut visible dans le
+    PDF, même en environnement dégradé.
+    """
+    import html as html_mod
+    import re
+
+    out: list[str] = []
+    lines = text.split("\n")
+    i = 0
+    n = len(lines)
+    in_ul = in_ol = False
+
+    def _inline(s: str) -> str:
+        """Convertit gras + italique + code inline. Échappe le HTML d'abord."""
+        s = html_mod.escape(s)
+        # Code inline `xx`
+        s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
+        # Gras **x**
+        s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
+        # Italique *x* (mais pas si entouré d'autres *)
+        s = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", s)
+        return s
+
+    def _close_lists() -> None:
+        nonlocal in_ul, in_ol
+        if in_ul:
+            out.append("</ul>")
+            in_ul = False
+        if in_ol:
+            out.append("</ol>")
+            in_ol = False
+
+    while i < n:
+        line = lines[i].rstrip()
+        stripped = line.strip()
+
+        # Lignes vides
+        if not stripped:
+            _close_lists()
+            i += 1
             continue
-        if p.startswith("### "):
-            html_paragraphs.append(f"<h3>{p[4:]}</h3>")
-        elif p.startswith("## "):
-            html_paragraphs.append(f"<h2>{p[3:]}</h2>")
-        elif p.startswith("# "):
-            html_paragraphs.append(f"<h1>{p[2:]}</h1>")
-        else:
-            html_paragraphs.append(f"<p>{p.replace(chr(10), '<br>')}</p>")
-    return "\n".join(html_paragraphs)
+
+        # Séparateur horizontal
+        if re.match(r"^---+$", stripped):
+            _close_lists()
+            out.append("<hr/>")
+            i += 1
+            continue
+
+        # Titres h1-h4
+        m = re.match(r"^(#{1,4})\s+(.+)$", stripped)
+        if m:
+            _close_lists()
+            level = len(m.group(1))
+            out.append(f"<h{level}>{_inline(m.group(2))}</h{level}>")
+            i += 1
+            continue
+
+        # Blockquote (peut s'étendre sur plusieurs lignes)
+        if stripped.startswith(">"):
+            _close_lists()
+            quote_lines: list[str] = []
+            while i < n and lines[i].lstrip().startswith(">"):
+                quote_lines.append(lines[i].lstrip()[1:].lstrip())
+                i += 1
+            out.append(
+                "<blockquote>" + _inline("<br/>".join(quote_lines)) + "</blockquote>"
+            )
+            continue
+
+        # Tableau pipe (détection : ligne avec >=2 pipes ET ligne suivante de
+        # séparateurs --- pipe)
+        if "|" in stripped and i + 1 < n:
+            next_line = lines[i + 1].strip()
+            if re.match(r"^\|?\s*:?-{2,}.*\|.*$", next_line):
+                _close_lists()
+                # Header
+                header_cells = [c.strip() for c in stripped.strip("|").split("|")]
+                rows: list[list[str]] = []
+                j = i + 2
+                while j < n and "|" in lines[j].strip():
+                    rows.append(
+                        [c.strip() for c in lines[j].strip().strip("|").split("|")]
+                    )
+                    j += 1
+                # Render
+                tbl = ["<table><thead><tr>"]
+                for c in header_cells:
+                    tbl.append(f"<th>{_inline(c)}</th>")
+                tbl.append("</tr></thead><tbody>")
+                for r in rows:
+                    tbl.append("<tr>")
+                    for c in r:
+                        tbl.append(f"<td>{_inline(c)}</td>")
+                    tbl.append("</tr>")
+                tbl.append("</tbody></table>")
+                out.append("".join(tbl))
+                i = j
+                continue
+
+        # Liste à puces
+        if re.match(r"^[-*+]\s+", stripped):
+            if not in_ul:
+                _close_lists()
+                out.append("<ul>")
+                in_ul = True
+            item = re.sub(r"^[-*+]\s+", "", stripped)
+            out.append(f"<li>{_inline(item)}</li>")
+            i += 1
+            continue
+
+        # Liste numérotée
+        if re.match(r"^\d+\.\s+", stripped):
+            if not in_ol:
+                _close_lists()
+                out.append("<ol>")
+                in_ol = True
+            item = re.sub(r"^\d+\.\s+", "", stripped)
+            out.append(f"<li>{_inline(item)}</li>")
+            i += 1
+            continue
+
+        # Paragraphe normal
+        _close_lists()
+        out.append(f"<p>{_inline(stripped)}</p>")
+        i += 1
+
+    _close_lists()
+    return "\n".join(out)
+
+
+def _strip_code_fence_wrapper(text: str) -> str:
+    """Enlève les fences ```markdown ... ``` que les LLMs ajoutent parfois
+    autour de leur sortie complète. Idempotent (no-op si pas de fence).
+
+    Cas réel observé : l'agent conx-plan répond parfois avec
+        ```markdown
+        ## Pré-cadrage…
+        …
+        ```
+    Si on garde le fence, markdown.markdown() rend la totalité comme un
+    bloc de code monospace dans le PDF — catastrophique.
+    """
+    s = text.strip()
+    if s.startswith("```"):
+        # Format ```markdown\n...content...\n```
+        first_nl = s.find("\n")
+        if first_nl >= 0:
+            first_line = s[:first_nl].strip()
+            # Accepte ```, ```markdown, ```md
+            if first_line in ("```", "```markdown", "```md", "```text"):
+                s = s[first_nl + 1 :]
+                if s.rstrip().endswith("```"):
+                    s = s.rstrip()[:-3].rstrip()
+    return s
 
 
 def _strip_top_h2(markdown_text: str) -> tuple[str, str]:
     """Enlève le H2 de titre du début du markdown (devient title de la
     couverture). Retourne (title, markdown_sans_h2).
+
+    Nettoie d'abord les fences ```markdown ... ``` que les LLMs ajoutent
+    parfois.
     """
+    markdown_text = _strip_code_fence_wrapper(markdown_text)
     m = re.match(r"^\s*##\s+(.+?)\s*$", markdown_text, re.MULTILINE)
     if not m:
         return ("Pré-cadrage rénovation", markdown_text)

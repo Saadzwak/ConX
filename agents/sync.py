@@ -238,7 +238,14 @@ def build_agent_payload(agent_cfg: dict, skills_map: dict) -> dict:
 
 
 def sync_agents(client, config: dict, skills_map: dict, lock: dict, dry_run: bool = False) -> dict[str, str]:
-    """Crée ou met à jour les agents. Retourne {name: agent_id}."""
+    """Crée ou met à jour les agents. Retourne {name: agent_id}.
+
+    ⚠ SDK Anthropic 0.96+ : `agents.update(agent_id, *, version: int, ...)`.
+    Le `version` est obligatoire et désigne la version COURANTE de l'agent
+    (servirait à éviter une race condition update parallèle — concurrency
+    token façon If-Match). On la récupère via `agents.retrieve(agent_id)`
+    juste avant l'update (B-013 fix 2026-05-23).
+    """
     existing = {a.name: a for a in client.beta.agents.list().data}
     agent_ids: dict[str, str] = lock.get("agents", {}) or {}
 
@@ -251,8 +258,28 @@ def sync_agents(client, config: dict, skills_map: dict, lock: dict, dry_run: boo
             agent_ids[name] = agent_id
             if dry_run:
                 continue
-            client.beta.agents.update(agent_id=agent_id, **{k: v for k, v in payload.items() if k != "name"})
-            logger.info("  → update OK")
+            # Récupère la version courante (concurrency token requis depuis
+            # SDK Anthropic 0.96+)
+            current = client.beta.agents.retrieve(agent_id=agent_id)
+            current_version = getattr(current, "version", None)
+            if current_version is None:
+                logger.error(
+                    "Agent %s : impossible de récupérer la version courante "
+                    "(retrieve a renvoyé %r). Update impossible.",
+                    name, current,
+                )
+                continue
+            update_kwargs = {k: v for k, v in payload.items() if k != "name"}
+            updated = client.beta.agents.update(
+                agent_id=agent_id,
+                version=current_version,
+                **update_kwargs,
+            )
+            new_version = getattr(updated, "version", None)
+            logger.info(
+                "  → update OK (version %s → %s)",
+                current_version, new_version,
+            )
         else:
             logger.info("Création agent : %s", name)
             if dry_run:

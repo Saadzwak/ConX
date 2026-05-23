@@ -238,3 +238,70 @@ curl -H "Authorization: Bearer $JWT" "http://localhost:8000/api/buildings?dept=5
 - Décisions auth/network : `DECISIONS.md` D-004, D-009, D-012, D-013
 - Formule scoring : `docs/SCORING.md`
 - Agents qui appellent l'API : `docs/AGENTS.md`
+
+---
+
+## Mises à jour Session 16-17 (2026-05-23)
+
+### Nouveau endpoint `POST /api/agents/plan/<session_id>/export-pdf`
+
+**Query param** : `version: int` (requis) — version du plan à exporter.
+
+**Body** (`PlanExportRequest`) :
+```json
+{
+  "plan_text": "## Pré-cadrage v1 — …\n…",
+  "building_id": "bdnb-bg-..."
+}
+```
+
+`plan_text` est requis dans le cas nominal (envoyé par le frontend qui
+l'a déjà reçu via SSE). En son absence, le backend tente une lecture
+depuis le cache local (`docs/demo_assets/cached_plans/`).
+
+**Réponse** : `Content-Type: application/pdf` en streaming. Header
+`Content-Disposition: attachment; filename="ConX_pre-cadrage_<id>_v<N>.pdf"`,
+header custom `X-ConX-Plan-Version: <N>`.
+
+**Pipeline** :
+1. Strip d'un éventuel fence ` ```markdown ... ``` ` autour de la sortie agent.
+2. Strip du H2 titre → utilisé comme titre couverture.
+3. Extraction sommaire depuis les sections numérotées (h2/h3).
+4. Conversion markdown → HTML via `python-markdown 3.7` (extensions
+   tables/fenced_code/nl2br/sane_lists/attr_list) ou fallback robuste.
+5. Rendu Jinja2 template `plan_rapport.html` + WeasyPrint → PDF.
+
+**Enrichissement couverture** : pour les bâtiments existants en
+`public_data.buildings`, lookup BDNB (whitelist 02/59/60/62/80) pour
+récupérer adresse BAN, commune lisible, identifiant DPE ADEME, RNB.
+
+### Nouveau endpoint `GET /api/buildings/<id>/rank`
+
+Cf. D-024 Session 15. Retourne classement IRIS + commune (dept abandonné
+perf) du bâtiment par `score_total`. Lazy fetch depuis le dashboard.
+
+### Champs ajoutés à `BuildingDetail`
+
+Voir `docs/BUILDING_DATA_INVENTORY.md` Section 2 pour l'inventaire
+complet. Principaux ajouts Session 15 :
+- Identité étendue : `commune_nom`, `adresse_postale`, `cle_interop_ban`,
+  `code_epci_insee`, `identifiant_dpe_ademe`.
+- `nb_niveaux_ffo`, `periode_thermique_reglementaire`, `materiau_toiture`,
+  `classe_emission_ges`, `shab_immeuble_m2`.
+- Sous-objets : `diagnostic_technique`, `conso_reelle_annuelle`,
+  `rpls`, `risques`, `urbanisme`, `fiabilite`, `acces_chantier`.
+- `aides_eligibles[]`, dérivés coûts.
+- Aplatissement des composantes `s_co2`, `s_faisa`, ... au top-level +
+  rétention de l'objet `score` nesté pour compat (D-024).
+
+### Robustesse SSE renforcée
+
+`GET /api/agents/plan/<sid>/stream` :
+- Heartbeat 15 s (`event: keepalive`).
+- Circuit-breaker 3 erreurs consécutives sur `list_events` /
+  `retrieve_session` avant abandon, back-off 2x sur retry.
+- Try/except par event individuel (un event mal formé est skip).
+- Log structuré `[SSE <sid>] poll #X elapsed=Ys total_events=N`.
+- Reconnexion frontend : 3 essais (1s/2s/4s) avec
+  `?after=<last_event_id>` pour reprendre sans perte de buffer.
+

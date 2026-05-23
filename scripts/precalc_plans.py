@@ -108,6 +108,21 @@ def _wait_for_idle(client, sid: str, pre_event_id: str | None) -> str:
     return "timeout"
 
 
+def _strip_code_fence(text: str) -> str:
+    """Enlève les fences ```markdown ... ``` que l'agent peut ajouter
+    autour de sa sortie complète. Idempotent."""
+    s = text.strip()
+    if s.startswith("```"):
+        first_nl = s.find("\n")
+        if first_nl >= 0:
+            first_line = s[:first_nl].strip()
+            if first_line in ("```", "```markdown", "```md", "```text"):
+                s = s[first_nl + 1 :]
+                if s.rstrip().endswith("```"):
+                    s = s.rstrip()[:-3].rstrip()
+    return s
+
+
 def _latest_agent_text(client, sid: str) -> str:
     events = list(client.beta.sessions.events.list(session_id=sid, limit=200).data)
     # On veut le DERNIER agent.message (pas les intermédiaires).
@@ -123,13 +138,21 @@ def _latest_agent_text(client, sid: str) -> str:
                 if text:
                     chunks.append(text)
             if chunks:
-                return "\n".join(chunks)
+                # Strip wrapper ```markdown si présent
+                return _strip_code_fence("\n".join(chunks))
     return ""
 
 
 def _build_initial_prompt(building: dict, target_class: str, preferences: dict) -> str:
+    """Construit le user message initial.
+
+    Reste léger et factuel — toutes les consignes de STYLE (pré-cadrage
+    modulaire, pas de jargon interne, sources publiques uniquement) sont
+    déjà dans le system prompt de l'agent (cf. agents/system_prompts/plan.md
+    réécrit 2026-05-23).
+    """
     parts = [
-        "Génère un plan de rénovation hors-site biosourcé pour ce bâtiment.\n",
+        "Génère un pré-cadrage de rénovation hors-site biosourcé pour ce bâtiment.\n",
         f"## Fiche bâtiment\n```json\n{json.dumps(building, ensure_ascii=False, indent=2)}\n```\n",
         f"## Cible\nClasse DPE visée : **{target_class}**\n",
     ]
@@ -139,11 +162,13 @@ def _build_initial_prompt(building: dict, target_class: str, preferences: dict) 
             f"{json.dumps(preferences, ensure_ascii=False, indent=2)}\n```\n"
         )
     parts.append(
-        "## Attendu\nRetourne un plan COMPLET avec :\n"
-        "- Stratégie hors-site biosourcée détaillée (procédés, matériaux)\n"
-        "- Bilan carbone en 3 composantes (exploitation, incorporé, évité)\n"
-        "- Sources FDES citées par numéro\n"
-        "- Coût estimé et délai\n"
+        "## Attendu\nRetourne un pré-cadrage COMPLET (structure markdown GFM) :\n"
+        "- Diagnostic synthétique du bâti\n"
+        "- Stratégie hors-site biosourcée détaillée (procédés + matériaux + lots indépendants)\n"
+        "- Bilan carbone 30 ans (exploitation évitée + incorporé + évité hors-site)\n"
+        "- Estimation budgétaire (fourchette filière HDF) + financements mobilisables\n"
+        "- Limites et précautions\n"
+        "- Sources finales (références publiques uniquement)\n"
     )
     return "\n".join(parts)
 

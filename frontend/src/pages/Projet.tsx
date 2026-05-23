@@ -106,11 +106,7 @@ function ProjetView({ id }: { id: string }) {
   });
 
   if (isLoading) {
-    return (
-      <div className="flex-1 grid place-items-center">
-        <div className="text-sm text-muted-foreground">Chargement du bâtiment…</div>
-      </div>
-    );
+    return <ProjetSkeleton />;
   }
   if (error || !building) {
     return (
@@ -146,6 +142,71 @@ function ProjetView({ id }: { id: string }) {
       <aside className="w-[460px] shrink-0 border-l bg-card flex flex-col overflow-hidden">
         <BuildingDashboard building={building} />
         <PlanChat building={building} />
+      </aside>
+    </div>
+  );
+}
+
+// =========================================================================
+// Skeleton loader (état chargement fiche bâtiment)
+// =========================================================================
+
+/**
+ * Skeleton mimétique de la mise en page Mode Projet : map + dashboard.
+ * Les blocs `animate-pulse bg-muted` occupent les mêmes dimensions que les
+ * vrais composants → pas de jump de layout au paint final.
+ */
+function ProjetSkeleton() {
+  return (
+    <div className="flex-1 flex min-h-0">
+      {/* Map placeholder (3D viewer) */}
+      <div className="flex-1 bg-muted/30 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-muted/20 via-muted/40 to-muted/20 animate-pulse" />
+        <div className="absolute top-3 left-3 h-8 w-32 rounded-md bg-muted/60 animate-pulse" />
+      </div>
+      {/* Dashboard placeholder */}
+      <aside className="w-[460px] shrink-0 border-l bg-card flex flex-col p-4 gap-4">
+        {/* En-tête : score circle + DPE badge + adresse */}
+        <div className="flex items-start gap-3">
+          <div className="h-20 w-20 rounded-full bg-muted animate-pulse" />
+          <div className="flex-1 space-y-2">
+            <div className="h-6 w-20 bg-muted rounded animate-pulse" />
+            <div className="h-4 w-3/4 bg-muted/60 rounded animate-pulse" />
+            <div className="h-3 w-1/2 bg-muted/40 rounded animate-pulse" />
+          </div>
+        </div>
+        {/* Badges */}
+        <div className="flex flex-wrap gap-1.5">
+          <div className="h-5 w-20 bg-muted/60 rounded-full animate-pulse" />
+          <div className="h-5 w-28 bg-muted/60 rounded-full animate-pulse" />
+          <div className="h-5 w-16 bg-muted/60 rounded-full animate-pulse" />
+        </div>
+        {/* Caractéristiques bâti (grid 2x4) */}
+        <div className="grid grid-cols-2 gap-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="space-y-1">
+              <div className="h-2 w-12 bg-muted/40 rounded animate-pulse" />
+              <div className="h-3.5 w-20 bg-muted rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+        {/* Performance énergétique placeholder */}
+        <div className="rounded-md bg-muted/30 p-3 space-y-2">
+          <div className="h-4 w-44 bg-muted rounded animate-pulse" />
+          <div className="h-3 w-3/4 bg-muted/60 rounded animate-pulse" />
+          <div className="h-3 w-2/3 bg-muted/60 rounded animate-pulse" />
+        </div>
+        {/* Radar placeholder */}
+        <div className="h-32 bg-muted/30 rounded animate-pulse" />
+        {/* 3 BigStats horizontal */}
+        <div className="grid grid-cols-3 gap-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-14 bg-muted/40 rounded animate-pulse" />
+          ))}
+        </div>
+        <div className="text-[11px] text-muted-foreground/70 text-center pt-2 animate-pulse">
+          Chargement du bâtiment…
+        </div>
       </aside>
     </div>
   );

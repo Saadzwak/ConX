@@ -25,9 +25,10 @@ export function Footer() {
           </span>
         </div>
         <div className="leading-relaxed text-[11px]">
-          <strong className="text-foreground/80">Données</strong> : IGN (LiDAR
-          HD, BD TOPO, BD Ortho), CSTB (BDNB 2025-07.a), ADEME (DPE, Base
-          Carbone), INIES (FDES), DGFiP (BAN). Licence Ouverte{" "}
+          <strong className="text-foreground/80">Sources</strong> : CSTB
+          (BDNB 2025-07.a), ADEME (DPE, Base Carbone), IGN (LiDAR HD, BD
+          TOPO, BD Ortho), INIES (FDES), DGFiP (BAN), Enedis-GRDF (DLE),
+          CD2E (filière biosourcée HDF). Licence Ouverte{" "}
           <a
             href="https://www.etalab.gouv.fr/wp-content/uploads/2017/04/ETALAB-Licence-Ouverte-v2.0.pdf"
             className="underline hover:text-foreground"

@@ -65,7 +65,11 @@ TARGETS = {
 }
 
 DEV_USER_ID = "00000000-0000-0000-0000-0000000000de"
-WAIT_TIMEOUT_S = 360  # 6 min max par plan
+# 10 min max par plan. Augmenté de 6 → 10 min après ajout du catalogue
+# Marketplace (25 entreprises) dans le system prompt qui allonge les
+# générations Wazemmes v2 (2 tours) et Vieux-Lille (DPE estimé statistique +
+# patrimoine + accès chantier) au-delà des 6 min initiaux.
+WAIT_TIMEOUT_S = 600
 
 
 def _load_env() -> None:

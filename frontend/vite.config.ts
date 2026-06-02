@@ -17,7 +17,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/tiles": {
-        target: "http://localhost:3000",
+        // martin (Rust MVT server) sur port 3010 par défaut — cohérent avec
+        // docker-compose.yml (MARTIN_PORT_HOST=3010 pour éviter conflit avec
+        // d'autres projets Node squattant 3000).
+        target: process.env.MARTIN_URL || "http://localhost:3010",
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/tiles/, ""),
       },

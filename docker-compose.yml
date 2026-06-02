@@ -74,7 +74,9 @@ services:
     volumes:
       - ./martin.yaml:/config.yaml:ro
     ports:
-      - "3000:3000"
+      # Port hôte 3010 par défaut pour éviter conflit avec d'autres projets Node
+      # (ex. Next.js sur 3000). Le frontend Vite proxie /tiles → localhost:${MARTIN_PORT_HOST:-3010}.
+      - "${MARTIN_PORT_HOST:-3010}:3000"
     depends_on:
       postgres_local:
         condition: service_healthy

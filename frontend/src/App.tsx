@@ -6,6 +6,8 @@ import { StrategiePage } from "@/pages/Strategie";
 import { ProjetPage } from "@/pages/Projet";
 import { IfcPage } from "@/pages/Ifc";
 import { MarketplacePage } from "@/pages/Marketplace";
+import { MarketplaceCompanyPage } from "@/pages/MarketplaceCompany";
+import { MarketplaceGroupOrdersPage } from "@/pages/MarketplaceGroupOrders";
 
 export default function App() {
   return (
@@ -19,6 +21,8 @@ export default function App() {
           <Route path="/projet/:id" element={<ProjetPage />} />
           <Route path="/ifc" element={<IfcPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />
+          <Route path="/marketplace/commandes-groupees" element={<MarketplaceGroupOrdersPage />} />
+          <Route path="/marketplace/:slug" element={<MarketplaceCompanyPage />} />
           <Route path="*" element={<Navigate to="/strategie" replace />} />
         </Routes>
       </main>

@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { cn } from "@/lib/utils";
 import companiesData from "@/data/marketplace_companies.json";
 
@@ -40,6 +41,9 @@ export interface Company {
   specialites: string[];
   description: string;
   pacte_bois_biosource: boolean;
+  /** URL d'une vraie photo (logo, usine, produit). Si vide, on génère un
+   *  avatar SVG catégoriel via `CompanyAvatar`. */
+  photo_url?: string | null;
 }
 
 interface MarketplaceData {
@@ -209,6 +213,18 @@ export function MarketplacePage() {
             coopératives filière. Tous implantés en HDF. Trouvez les bons
             partenaires pour chaque lot de votre pré-cadrage.
           </p>
+
+          {/* CTA Commandes groupées */}
+          <div className="mt-4">
+            <Link
+              to="/marketplace/commandes-groupees"
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              <span className="font-medium">Commandes groupées ouvertes</span>
+              <span className="text-xs opacity-90">— mutualiser pour économiser ~12 %</span>
+              <span aria-hidden>→</span>
+            </Link>
+          </div>
 
           {/* Quick stats */}
           <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl">
@@ -473,68 +489,89 @@ function CompanyCard({
     icon: Factory,
     tone: "bg-muted text-foreground border-border",
   };
-  const Icon = meta.icon;
   return (
     <article
       ref={cardRef}
-      className="rounded-lg border bg-card p-4 hover:shadow-md hover:border-primary/30 transition-shadow flex flex-col h-full"
+      className="rounded-lg border bg-card hover:shadow-md hover:border-primary/30 transition-shadow flex flex-col h-full overflow-hidden group"
     >
-      <header className="flex items-start gap-2 mb-2">
-        <div className="h-9 w-9 rounded-md bg-primary/10 text-primary grid place-items-center shrink-0">
-          <Icon className="h-4.5 w-4.5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-sm leading-tight truncate">{c.name}</h3>
-          <div className="text-[11px] text-muted-foreground mt-0.5 inline-flex items-center gap-1">
-            <MapPin className="h-3 w-3" />
-            {c.ville} · Dpt {c.departement}
-          </div>
-        </div>
-      </header>
-
-      <div className="flex flex-wrap gap-1 mb-2">
-        <span
-          className={cn(
-            "inline-flex items-center px-1.5 py-0.5 text-[10px] rounded-full border font-medium",
-            meta.tone,
-          )}
-        >
-          {meta.label}
-        </span>
+      {/* Bandeau photo / avatar — clic vers page dédiée */}
+      <Link
+        to={`/marketplace/${c.slug}`}
+        className="block aspect-[16/9] overflow-hidden bg-muted relative"
+      >
+        <CompanyAvatar
+          name={c.name}
+          category={c.category}
+          photoUrl={c.photo_url}
+          size="xl"
+          className="!h-full !w-full !rounded-none"
+        />
         {c.pacte_bois_biosource && (
-          <span
-            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded-full border font-medium bg-primary/10 text-primary border-primary/20"
-            title="Partenaire officiel du Pacte Bois-Biosourcés HDF"
-          >
+          <span className="absolute top-1.5 right-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded-full border font-medium bg-white/95 text-primary border-primary/20 shadow-sm">
             <Award className="h-2.5 w-2.5" />
             Pacte BB
           </span>
         )}
-      </div>
+      </Link>
 
-      <p className="text-xs text-foreground/80 leading-snug flex-1 mb-3">
-        {c.description}
-      </p>
+      <div className="p-4 flex flex-col flex-1">
+        <header className="mb-2">
+          <Link to={`/marketplace/${c.slug}`}>
+            <h3 className="font-semibold text-sm leading-tight group-hover:text-primary transition-colors">
+              {c.name}
+            </h3>
+          </Link>
+          <div className="text-[11px] text-muted-foreground mt-0.5 inline-flex items-center gap-1">
+            <MapPin className="h-3 w-3" />
+            {c.ville} · Dpt {c.departement}
+          </div>
+        </header>
 
-      {c.specialites && c.specialites.length > 0 && (
-        <div className="text-[11px] text-muted-foreground mb-3 leading-snug">
-          <strong className="text-foreground/70">Spécialités :</strong>{" "}
-          {c.specialites.slice(0, 4).join(" · ")}
-          {c.specialites.length > 4 && " · …"}
+        <div className="flex flex-wrap gap-1 mb-2">
+          <span
+            className={cn(
+              "inline-flex items-center px-1.5 py-0.5 text-[10px] rounded-full border font-medium",
+              meta.tone,
+            )}
+          >
+            {meta.label}
+          </span>
         </div>
-      )}
 
-      {c.website && (
-        <a
-          href={c.website}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="text-xs text-primary inline-flex items-center gap-1 hover:underline mt-auto"
-        >
-          Voir le site
-          <ExternalLink className="h-3 w-3" />
-        </a>
-      )}
+        <p className="text-xs text-foreground/80 leading-snug flex-1 mb-3 line-clamp-3">
+          {c.description}
+        </p>
+
+        {c.specialites && c.specialites.length > 0 && (
+          <div className="text-[11px] text-muted-foreground mb-3 leading-snug">
+            <strong className="text-foreground/70">Spécialités :</strong>{" "}
+            {c.specialites.slice(0, 3).join(" · ")}
+            {c.specialites.length > 3 && " · …"}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between text-xs mt-auto">
+          <Link
+            to={`/marketplace/${c.slug}`}
+            className="text-primary font-medium inline-flex items-center gap-1 hover:underline"
+          >
+            Voir la fiche
+            <span aria-hidden>→</span>
+          </Link>
+          {c.website && (
+            <a
+              href={c.website}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Site
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+        </div>
+      </div>
     </article>
   );
 }

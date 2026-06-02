@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Sparkles, Send, Loader2, AlertCircle, History, Database, FileDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -86,21 +87,22 @@ const MD_COMPONENTS = {
   ),
   a: (p: { children?: React.ReactNode; href?: string }) => {
     const href = p.href ?? "";
-    // Cas spécial : lien marketplace:slug → router interne vers /marketplace
-    // (filtré par ref). L'agent Plan reçoit comme consigne d'utiliser
-    // [Nom](marketplace:slug) pour citer un fournisseur HDF.
+    // Cas spécial : lien `marketplace:slug` → React Router vers la page
+    // dédiée /marketplace/<slug>. L'agent reçoit comme consigne d'utiliser
+    // [Nom](marketplace:slug) pour citer un fournisseur HDF. Si slug vide
+    // → /marketplace (l'annuaire global).
     if (href.startsWith("marketplace:")) {
-      const slug = href.slice("marketplace:".length);
-      const to = slug ? `/marketplace?ref=${encodeURIComponent(slug)}` : "/marketplace";
+      const slug = href.slice("marketplace:".length).trim();
+      const to = slug ? `/marketplace/${slug}` : "/marketplace";
       return (
-        <a
-          href={to}
+        <Link
+          to={to}
           className="text-primary font-medium underline underline-offset-2 hover:text-primary/80 inline-flex items-center gap-0.5"
-          title={`Voir ${slug || "tous les acteurs HDF"} dans la Marketplace ConX`}
+          title={slug ? `Voir la fiche ${slug} dans la Marketplace ConX` : "Voir la Marketplace ConX"}
         >
           {p.children}
           <span aria-hidden className="text-[9px] opacity-60">↗</span>
-        </a>
+        </Link>
       );
     }
     return (

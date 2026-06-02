@@ -12,7 +12,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Sparkles, Send, Loader2, AlertCircle, History, Database, FileDown } from "lucide-react";
+import {
+  Sparkles,
+  Send,
+  Loader2,
+  AlertCircle,
+  History,
+  Database,
+  FileDown,
+  Maximize2,
+  Minimize2,
+  X,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -143,6 +154,23 @@ export function PlanChat({ building }: Props) {
   const [replayed, setReplayed] = useState<{ from: string; to: string } | null>(null);
   const evtSrcRef = useRef<EventSource | null>(null);
   const [slowMode, setSlowMode] = useState(false);
+  // Mode plein écran flottant : modal 70vw × 80vh pour lire le plan
+  // confortablement sans télécharger. Réversible (← bouton réduire).
+  const [expanded, setExpanded] = useState(false);
+  // Bloque le scroll body quand modal ouvert + ferme à Escape
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [expanded]);
   const slowTimerRef = useRef<number | null>(null);
   // Robustesse SSE : on retient le dernier event_id reçu pour pouvoir
   // reconnecter avec ?after=<id> et ne pas perdre l'état déjà streamé.
@@ -489,38 +517,140 @@ export function PlanChat({ building }: Props) {
             cache
           </Badge>
         )}
-        {/* Export PDF — visible quand le plan actif est complet (idle) */}
+        {/* Boutons à droite : Agrandir + PDF — visibles quand idle */}
         {active && active.status === "idle" && active.agent_text && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="ml-auto h-7 px-2 shrink-0 text-xs"
-            onClick={async () => {
-              if (!sessionId || !active.agent_text) return;
-              // Pour le cache (sessionId préfixé "cache:") on a un session_id
-              // distant valide dans le payload — sinon on utilise le sessionId
-              // tel quel (vraie session Anthropic).
-              const sid = sessionId.startsWith("cache:")
-                ? sessionId.slice("cache:".length)
-                : sessionId;
-              try {
-                await exportPlanPdf({
-                  sessionId: sid,
-                  version: active.version,
-                  planText: active.agent_text,
-                  buildingId: building.building_id,
-                });
-              } catch (e) {
-                setError((e as Error).message);
-              }
-            }}
-            title={`Exporter v${active.version} en PDF`}
-          >
-            <FileDown className="h-3.5 w-3.5 mr-1" />
-            PDF
-          </Button>
+          <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs"
+              onClick={() => setExpanded(true)}
+              title="Agrandir le pré-cadrage pour le lire en plein écran"
+            >
+              <Maximize2 className="h-3.5 w-3.5 mr-1" />
+              Agrandir
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs"
+              onClick={async () => {
+                if (!sessionId || !active.agent_text) return;
+                const sid = sessionId.startsWith("cache:")
+                  ? sessionId.slice("cache:".length)
+                  : sessionId;
+                try {
+                  await exportPlanPdf({
+                    sessionId: sid,
+                    version: active.version,
+                    planText: active.agent_text,
+                    buildingId: building.building_id,
+                  });
+                } catch (e) {
+                  setError((e as Error).message);
+                }
+              }}
+              title={`Exporter v${active.version} en PDF`}
+            >
+              <FileDown className="h-3.5 w-3.5 mr-1" />
+              PDF
+            </Button>
+          </div>
         )}
       </div>
+
+      {/* MODAL plein écran flottant — Saad UX request : agrandir le plan
+          pour le lire pleine largeur sans télécharger (réversible). */}
+      {expanded && active?.agent_text && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center p-4 md:p-8 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setExpanded(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Pré-cadrage v${active.version} agrandi`}
+        >
+          <div
+            className="bg-card border rounded-lg shadow-2xl flex flex-col"
+            style={{
+              width: "min(70vw, 1100px)",
+              maxWidth: "100%",
+              height: "min(85vh, 900px)",
+            }}
+          >
+            {/* Header modal */}
+            <div className="px-5 py-3 border-b flex items-center justify-between gap-3 shrink-0 bg-muted/30">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold leading-tight">
+                  Pré-cadrage rénovation v{active.version}
+                </h2>
+                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                  {building.adresse_postale ?? building.building_id}
+                  {building.commune_nom && ` · ${building.commune_nom}`}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  onClick={async () => {
+                    if (!sessionId || !active.agent_text) return;
+                    const sid = sessionId.startsWith("cache:")
+                      ? sessionId.slice("cache:".length)
+                      : sessionId;
+                    try {
+                      await exportPlanPdf({
+                        sessionId: sid,
+                        version: active.version,
+                        planText: active.agent_text,
+                        buildingId: building.building_id,
+                      });
+                    } catch (e) {
+                      setError((e as Error).message);
+                    }
+                  }}
+                >
+                  <FileDown className="h-3.5 w-3.5 mr-1" />
+                  PDF
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setExpanded(false)}
+                  title="Réduire (revenir à la sidebar)"
+                >
+                  <Minimize2 className="h-3.5 w-3.5 mr-1" />
+                  Réduire
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(false)}
+                  aria-label="Fermer"
+                  className="text-muted-foreground hover:text-foreground transition-colors rounded-md p-1 hover:bg-accent"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Body : markdown rendu pleine largeur, scroll interne */}
+            <div className="flex-1 overflow-y-auto px-8 py-6 text-[13.5px] leading-[1.65]">
+              <div className="max-w-3xl mx-auto">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={MD_COMPONENTS}
+                  urlTransform={(url) => url}
+                >
+                  {active.agent_text}
+                </ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bandeau "slow mode" : 90 s passé, propose cache */}
       {slowMode && busy && (
@@ -548,7 +678,17 @@ export function PlanChat({ building }: Props) {
         )}
         {active?.agent_text ? (
           <div className="space-y-1">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={MD_COMPONENTS}
+              // ⚠ CRITIQUE — react-markdown v9 sanitize les URL schemes
+              // non-standards (« marketplace: »). Sans `urlTransform`, le
+              // href des liens `[Nom](marketplace:slug)` est remplacé par
+              // une string vide → le composant <Link> ne navigue pas
+              // (reste sur /projet/...). Le bug "lien marketplace mène à
+              // la page projet" identifié par Saad est résolu ici.
+              urlTransform={(url) => url}
+            >
               {active.agent_text}
             </ReactMarkdown>
           </div>

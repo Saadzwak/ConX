@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
@@ -26,7 +26,24 @@ export default function App() {
           <Route path="*" element={<Navigate to="/strategie" replace />} />
         </Routes>
       </main>
-      <Footer />
+      <ConditionalFooter />
     </div>
   );
+}
+
+/**
+ * Footer affiché uniquement sur les pages où il a du sens :
+ * Marketplace, IFC, pages d'info. Caché sur Stratégie + Projet qui
+ * sont des écrans pleins (carte + dashboard) où le bandeau légal
+ * mange de la place visible sans apporter d'info clé (cf. retour Saad).
+ *
+ * Les mentions légales restent accessibles depuis la Marketplace et
+ * les pages /a-propos (à venir).
+ */
+function ConditionalFooter() {
+  const { pathname } = useLocation();
+  const hideOn = ["/strategie", "/projet"];
+  const shouldHide = hideOn.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  if (shouldHide) return null;
+  return <Footer />;
 }

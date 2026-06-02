@@ -277,54 +277,51 @@ function CompactCard({ building }: { building: BuildingDetail }) {
         open={scoreDialogOpen}
         onClose={() => setScoreDialogOpen(false)}
       />
-      {/* Identité + score */}
-      <section className="flex items-start gap-3">
-        <button
-          type="button"
-          onClick={() => setScoreDialogOpen(true)}
-          className="rounded-full hover:ring-2 hover:ring-primary/30 transition-shadow"
-          title="Comprendre le score ConX"
-          aria-label="Ouvrir l'explication du score"
-        >
-          <ScoreCircle score={score} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <DpeBadge classe={dpe} source={building.dpe_source ?? "—"} large />
-          <div className="mt-2 flex items-start gap-1.5">
-            <MapPin className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold leading-snug break-words">{adresse}</h2>
-              {building.commune_nom && (
-                <p className="text-[11px] text-muted-foreground">
-                  {building.commune_nom}
-                  {building.code_iris && ` · IRIS ${building.code_iris}`}
-                  {` · Dpt ${building.dept}`}
-                </p>
-              )}
-              {building.identifiant_dpe_ademe && (
-                <p
-                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5"
-                  title="Identifiant DPE officiel ADEME — consultable sur observatoire-dpe-audit.ademe.fr"
-                >
-                  DPE ADEME :{" "}
-                  <code className="font-mono text-[10.5px] text-foreground/80">
-                    {building.identifiant_dpe_ademe}
-                  </code>
-                </p>
-              )}
-              <p className="text-[10px] text-muted-foreground/70 mt-1 font-mono break-all">
-                {building.building_id}
-                {building.rnb_id && ` · RNB ${building.rnb_id}`}
+
+      {/* ═══════ 1. IDENTITÉ BÂTIMENT ═══════
+          La donnée factuelle d'abord (cf. audit UX) : adresse, commune,
+          identifiants stables, RNB. Le visiteur doit IMMÉDIATEMENT savoir
+          DE QUEL BÂTIMENT on parle. */}
+      <section className="space-y-1.5">
+        <div className="flex items-start gap-1.5">
+          <MapPin className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-semibold leading-snug break-words">
+              {adresse}
+            </h2>
+            {building.commune_nom && (
+              <p className="text-xs text-muted-foreground">
+                {building.commune_nom}
+                {building.code_iris && ` · IRIS ${building.code_iris}`}
+                {` · Dpt ${building.dept}`}
               </p>
-            </div>
+            )}
+            <p className="text-[10px] text-muted-foreground/70 mt-1 font-mono break-all">
+              BDNB&nbsp;{building.building_id}
+              {building.rnb_id && (
+                <>
+                  {" "}
+                  · RNB&nbsp;{building.rnb_id}
+                </>
+              )}
+            </p>
           </div>
         </div>
       </section>
 
-      {/* Badges contextuels */}
+      {/* ═══════ 2. DIAGNOSTIC DPE ═══════
+          Bloc DPE complet et bien lisible : classe + identifiant ADEME +
+          date de réalisation + date de validité. C'est la première
+          question de l'expert métier. */}
+      <DpeIdentitySection building={building} dpeIsReal={dpeIsReal} dpe={dpe} />
+
+      {/* ═══════ 3. BADGES CONTEXTUELS ═══════
+          QPV, RCU, AC1, MH, SPR, PMR — éléments qui contraignent ou
+          ouvrent des dispositifs spécifiques. */}
       <ContextBadges building={building} dpeIsReal={dpeIsReal} />
 
-      {/* Caractéristiques bâti */}
+      {/* ═══════ 4. CARACTÉRISTIQUES BÂTI ═══════
+          Surface, niveaux, logements, année, matériaux. */}
       <section>
         <SectionTitle>Caractéristiques bâti</SectionTitle>
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
@@ -350,7 +347,7 @@ function CompactCard({ building }: { building: BuildingDetail }) {
         </dl>
       </section>
 
-      {/* Performance énergétique */}
+      {/* ═══════ 5. PERFORMANCE ÉNERGÉTIQUE ═══════ */}
       <section className="rounded-md bg-muted/50 p-3 text-xs space-y-1">
         <div className="font-semibold text-sm">Performance énergétique</div>
         <div>
@@ -371,72 +368,104 @@ function CompactCard({ building }: { building: BuildingDetail }) {
         </div>
       </section>
 
-      {/* Composantes scoring — radar visuel + barres détaillées */}
-      <section className="space-y-1.5">
+      {/* ═══════ 6. ESTIMATIONS CONX (priorisation + impacts) ═══════
+          Tout ce qui est ESTIMÉ / CALCULÉ par ConX (score, composantes,
+          impacts 30 ans) descend EN BAS de la fiche. Pour l'expert
+          métier, ce sont des indicateurs de priorisation, pas la première
+          information utile. */}
+      <section className="rounded-md border-2 border-primary/20 p-3 bg-primary/5 space-y-3">
         <div className="flex items-center justify-between">
-          <SectionTitle>Composantes du score</SectionTitle>
+          <div className="font-semibold text-sm flex items-center gap-1.5">
+            <Award className="h-4 w-4 text-primary" />
+            Estimations ConX
+          </div>
           <button
             type="button"
             onClick={() => setScoreDialogOpen(true)}
             className="text-[11px] text-muted-foreground hover:text-primary inline-flex items-center gap-0.5 transition-colors"
-            title="Comprendre le calcul du score"
+            title="Comprendre le scoring et son calcul"
           >
             <HelpCircle className="h-3 w-3" />
-            <span>aide</span>
+            <span>méthode</span>
           </button>
         </div>
-        <ScoreRadar
-          s_co2={building.s_co2}
-          s_faisa={building.s_faisa}
-          s_cout={building.s_cout}
-          s_social={building.s_social}
-          s_passoire={building.s_passoire}
-        />
-        <details className="text-[10.5px] text-muted-foreground">
-          <summary className="cursor-pointer hover:text-foreground select-none">
-            Voir le détail des 5 composantes
-          </summary>
-          <div className="mt-1.5 space-y-1.5">
-            <ScoreBar label="CO₂ évité" value={building.s_co2} />
-            <ScoreBar label="Faisabilité" value={building.s_faisa} />
-            <ScoreBar label="Coût" value={building.s_cout} />
-            <ScoreBar label="Social" value={building.s_social} />
-            <ScoreBar label="Passoire" value={building.s_passoire} />
-          </div>
-        </details>
-      </section>
 
-      {/* Impacts 30 ans — chiffres animés au paint pour l'effet pitch */}
-      <section className="rounded-md border p-3 space-y-1.5 text-xs bg-primary/5">
-        <div className="font-semibold text-sm flex items-center gap-1.5">
-          <Award className="h-4 w-4 text-primary" /> Impacts 30 ans
+        {/* Score circle + label */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setScoreDialogOpen(true)}
+            className="rounded-full hover:ring-2 hover:ring-primary/30 transition-shadow"
+            title="Comprendre le score ConX"
+            aria-label="Ouvrir l'explication du score"
+          >
+            <ScoreCircle score={score} />
+          </button>
+          <div className="flex-1 text-xs">
+            <div className="font-semibold text-foreground">
+              Score de priorisation
+            </div>
+            <p className="text-muted-foreground leading-snug">
+              Position du bâtiment dans le patrimoine HDF pour une
+              rénovation hors-site biosourcée. 0-100.
+            </p>
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 mt-1">
-          <BigStat
-            label="CO₂ évité"
-            value={fmtT(building.co2_evite_t)}
-            unit="tCO₂"
-            animateNumber={building.co2_evite_t ?? null}
-            tooltip="Tonnes de CO₂ évitées sur 30 ans après rénovation. Calcul déterministe : surface × ΔkWh ep/m²/an × facteur émission ADEME × 30."
+
+        {/* Composantes scoring */}
+        <div className="space-y-1.5">
+          <SubTitle>Composantes du score (5 axes)</SubTitle>
+          <ScoreRadar
+            s_co2={building.s_co2}
+            s_faisa={building.s_faisa}
+            s_cout={building.s_cout}
+            s_social={building.s_social}
+            s_passoire={building.s_passoire}
           />
-          <BigStat
-            label="Coût op."
-            value={fmtMoneyShort(building.cout_estime_eur)}
-            animateNumber={
-              building.cout_estime_eur != null
-                ? building.cout_estime_eur / 1000
-                : null
-            }
-            unit={building.cout_estime_eur != null && building.cout_estime_eur >= 1000 ? "k€" : "€"}
-            tooltip="Coût estimatif filière HDF 2025 d'une rénovation hors-site biosourcée pour ce profil (ITE + toiture + menuiseries + systèmes). Fourchette indicative à confirmer par devis."
-          />
-          <BigStat
-            label="€/tCO₂"
-            value={fmtMoneyShort(building.cout_eur_par_t_co2)}
-            animateNumber={building.cout_eur_par_t_co2 ?? null}
-            unit="€"
-            tooltip="Ratio coût / efficacité climatique : € investis par tonne de CO₂ évitée. Plus c'est bas, plus la rénovation est efficiente. Référence ADEME pour le neuf : 300-500 €/tCO₂."
-          />
+          <details className="text-[10.5px] text-muted-foreground">
+            <summary className="cursor-pointer hover:text-foreground select-none">
+              Voir le détail des 5 composantes
+            </summary>
+            <div className="mt-1.5 space-y-1.5">
+              <ScoreBar label="CO₂ évité" value={building.s_co2} />
+              <ScoreBar label="Faisabilité" value={building.s_faisa} />
+              <ScoreBar label="Coût" value={building.s_cout} />
+              <ScoreBar label="Social" value={building.s_social} />
+              <ScoreBar label="Passoire" value={building.s_passoire} />
+            </div>
+          </details>
+        </div>
+
+        {/* Impacts 30 ans */}
+        <div className="space-y-1.5">
+          <SubTitle>Impacts estimés sur 30 ans</SubTitle>
+          <div className="grid grid-cols-3 gap-2">
+            <BigStat
+              label="CO₂ évité"
+              value={fmtT(building.co2_evite_t)}
+              unit="tCO₂"
+              animateNumber={building.co2_evite_t ?? null}
+              tooltip="Tonnes de CO₂ évitées sur 30 ans après rénovation. Calcul déterministe : surface × ΔkWh ep/m²/an × facteur émission ADEME × 30."
+            />
+            <BigStat
+              label="Coût op."
+              value={fmtMoneyShort(building.cout_estime_eur)}
+              animateNumber={
+                building.cout_estime_eur != null
+                  ? building.cout_estime_eur / 1000
+                  : null
+              }
+              unit={building.cout_estime_eur != null && building.cout_estime_eur >= 1000 ? "k€" : "€"}
+              tooltip="Coût estimatif filière HDF 2025 d'une rénovation hors-site biosourcée pour ce profil (ITE + toiture + menuiseries + systèmes). Fourchette indicative à confirmer par devis."
+            />
+            <BigStat
+              label="€/tCO₂"
+              value={fmtMoneyShort(building.cout_eur_par_t_co2)}
+              animateNumber={building.cout_eur_par_t_co2 ?? null}
+              unit="€"
+              tooltip="Ratio coût / efficacité climatique : € investis par tonne de CO₂ évitée. Plus c'est bas, plus la rénovation est efficiente. Référence ADEME pour le neuf : 300-500 €/tCO₂."
+            />
+          </div>
         </div>
       </section>
 
@@ -1057,6 +1086,120 @@ function Footer({ building }: { building: BuildingDetail }) {
 // =========================================================================
 // Atomes UI
 // =========================================================================
+
+/**
+ * Bloc DPE — première information factuelle après l'identité. Affiche :
+ *   - le badge classe DPE (A-G)
+ *   - le label « DPE réel ADEME » ou « DPE estimé statistique »
+ *   - l'identifiant ADEME (si DPE réel)
+ *   - la date d'établissement + date de validité (10 ans réglementaires)
+ *
+ * Source des dates : champ BDNB `date_etablissement_dpe` →
+ * `building.date_etablissement_dpe`, `building.dpe_expire_le` calculé
+ * côté backend (cf. routers/buildings.py PHASE 2.14).
+ */
+function DpeIdentitySection({
+  building,
+  dpeIsReal,
+  dpe,
+}: {
+  building: BuildingDetail;
+  dpeIsReal: boolean;
+  dpe: string;
+}) {
+  const dateEtabli = formatDateFR(building.date_etablissement_dpe ?? undefined);
+  const dateExpire = formatDateFR(building.dpe_expire_le ?? undefined);
+  // Le DPE est-il encore valable aujourd'hui ?
+  const expired =
+    !!building.dpe_expire_le &&
+    new Date(building.dpe_expire_le).getTime() < Date.now();
+
+  return (
+    <section className="rounded-md border bg-card p-3 space-y-2">
+      {/* Ligne haute : badge classe + source DPE */}
+      <div className="flex items-start gap-3">
+        <DpeBadge classe={dpe} source={building.dpe_source ?? "—"} large />
+        <div className="flex-1 min-w-0 text-xs">
+          <div className="font-semibold text-sm leading-tight">
+            DPE classe {dpe}
+            <span className="ml-1.5 inline-flex items-center text-[10.5px] font-medium px-1.5 py-0.5 rounded-full border bg-muted/60 align-middle">
+              {dpeIsReal ? "Officiel ADEME" : "Estimé statistique"}
+            </span>
+          </div>
+          {building.dpe_kwh_ep_m2_an != null && (
+            <div className="text-muted-foreground mt-0.5">
+              {fmt(building.dpe_kwh_ep_m2_an)} kWh ep/m²/an
+              {building.dpe_kg_co2_m2_an != null &&
+                ` · ${fmt(building.dpe_kg_co2_m2_an)} kg CO₂/m²/an`}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Détails DPE réel : identifiant + date + validité */}
+      {dpeIsReal && (
+        <div className="border-t pt-2 space-y-1 text-[11px]">
+          {building.identifiant_dpe_ademe && (
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="text-muted-foreground">N° ADEME :</span>
+              <code
+                className="font-mono text-[10.5px] text-foreground/85 select-all"
+                title="Identifiant DPE officiel ADEME — consultable sur observatoire-dpe-audit.ademe.fr"
+              >
+                {building.identifiant_dpe_ademe}
+              </code>
+            </div>
+          )}
+          {dateEtabli && (
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="text-muted-foreground">Réalisé le :</span>
+              <strong className="text-foreground/90">{dateEtabli}</strong>
+            </div>
+          )}
+          {dateExpire && (
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="text-muted-foreground">Valable jusqu'au :</span>
+              <strong
+                className={cn(
+                  expired ? "text-red-700" : "text-foreground/90",
+                )}
+              >
+                {dateExpire}
+              </strong>
+              {expired && (
+                <span className="text-[10px] text-red-700 font-medium">
+                  · expiré
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Cas DPE estimé : explication courte */}
+      {!dpeIsReal && (
+        <div className="border-t pt-2 text-[11px] text-muted-foreground leading-snug">
+          Pas de DPE officiel à l'observatoire ADEME. Classe estimée
+          statistiquement à partir des caractéristiques bâti et du DPE du
+          voisinage. À confirmer par un diagnostic officiel avant
+          engagement de travaux.
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Formate une date ISO/timestamp Postgres en JJ/MM/AAAA (FR). */
+function formatDateFR(raw?: string | null): string | null {
+  if (!raw) return null;
+  // Tolère "2022-04-27 22:00:00+00" ET "2032-04-24" ET ISO.
+  // On garde uniquement la partie date (avant T ou espace).
+  const datePart = raw.split(/[T ]/)[0];
+  const m = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const [, y, mo, d] = m;
+  return `${d}/${mo}/${y}`;
+}
 
 function ScoreCircle({ score }: { score: number }) {
   const targetPct = Math.max(0, Math.min(1, score)) * 100;

@@ -368,36 +368,61 @@ export function MarketplacePage() {
         )}
       </section>
 
-      {/* CTA bas page */}
+      {/* Méthodologie + sources */}
       <section className="border-t bg-muted/30 mt-8">
-        <div className="container py-8 max-w-4xl text-center">
-          <h3 className="text-lg font-semibold mb-2">Votre entreprise n'est pas listée ?</h3>
-          <p className="text-sm text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            La marketplace ConX référence les acteurs vérifiés de la filière
-            HDF rénovation biosourcée. Pour rejoindre l'annuaire et accéder
-            aux pipelines de projets pré-qualifiés via la mutualisation
-            inter-MOA, contactez l'équipe ConX.
-          </p>
-          <Button
-            asChild
-            variant="outline"
-            className="mt-4"
-            size="sm"
-          >
-            <a
-              href="mailto:saadbabidi.com@gmail.com?subject=Demande%20de%20r%C3%A9f%C3%A9rencement%20Marketplace%20ConX"
-            >
-              Demander un référencement
-            </a>
-          </Button>
-          <div className="mt-6 flex flex-wrap justify-center gap-3 text-[11px] text-muted-foreground">
-            <Link to="/strategie" className="hover:text-foreground underline-offset-2 hover:underline">
-              ← Retour à la carte
-            </Link>
-            <span className="text-muted-foreground/40">·</span>
-            <Link to="/projet" className="hover:text-foreground underline-offset-2 hover:underline">
-              Ouvrir Mode Projet
-            </Link>
+        <div className="container py-8 max-w-4xl">
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                <Award className="h-4 w-4 text-primary" />
+                Comment l'annuaire est construit
+              </h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Chaque entreprise est vérifiée sur trois critères :
+                implantation effective en Hauts-de-France, présence d'un site
+                officiel actif, alignement avec la filière hors-site
+                biosourcée. Les partenaires officiels du{" "}
+                <strong className="text-foreground">
+                  Pacte Bois-Biosourcés HDF
+                </strong>{" "}
+                (Fibois HDF / CD2E) sont marqués d'un badge dédié.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                <Store className="h-4 w-4 text-primary" />
+                Votre entreprise n'est pas listée ?
+              </h3>
+              <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+                Pour rejoindre l'annuaire et accéder aux pipelines de projets
+                pré-qualifiés via la mutualisation inter-MOA, contactez
+                l'équipe ConX.
+              </p>
+              <Button asChild variant="outline" size="sm">
+                <a
+                  href="mailto:saadbabidi.com@gmail.com?subject=Demande%20de%20r%C3%A9f%C3%A9rencement%20Marketplace%20ConX"
+                >
+                  Demander un référencement
+                </a>
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-border/50 flex flex-wrap justify-between items-center gap-3 text-[11px] text-muted-foreground">
+            <div>
+              <strong className="text-foreground/80">Sources de vérification</strong> :
+              Fibois Hauts-de-France · CD2E · INSEE/Industrie Explorer · sites
+              officiels des entreprises.
+            </div>
+            <div className="flex gap-3">
+              <Link to="/strategie" className="hover:text-foreground underline-offset-2 hover:underline">
+                ← Retour à la carte
+              </Link>
+              <span className="text-muted-foreground/40">·</span>
+              <Link to="/projet" className="hover:text-foreground underline-offset-2 hover:underline">
+                Ouvrir Mode Projet
+              </Link>
+            </div>
           </div>
         </div>
       </section>

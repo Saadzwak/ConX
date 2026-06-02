@@ -1,5 +1,5 @@
 /**
- * J16 — Chat itératif Agent Plan (Claude Opus 4.7 via SSE).
+ * Chat itératif Agent Pré-cadrage (streaming SSE).
  *
  * - Premier message : auto-injecté par le backend (POST /agents/plan/start
  *   prend la fiche bâtiment et la préférence biosource).
@@ -84,16 +84,36 @@ const MD_COMPONENTS = {
   td: (p: { children?: React.ReactNode }) => (
     <td className="border border-border px-2 py-1 align-top">{p.children}</td>
   ),
-  a: (p: { children?: React.ReactNode; href?: string }) => (
-    <a
-      href={p.href}
-      target="_blank"
-      rel="noreferrer noopener"
-      className="text-primary underline underline-offset-2 hover:text-primary/80"
-    >
-      {p.children}
-    </a>
-  ),
+  a: (p: { children?: React.ReactNode; href?: string }) => {
+    const href = p.href ?? "";
+    // Cas spécial : lien marketplace:slug → router interne vers /marketplace
+    // (filtré par ref). L'agent Plan reçoit comme consigne d'utiliser
+    // [Nom](marketplace:slug) pour citer un fournisseur HDF.
+    if (href.startsWith("marketplace:")) {
+      const slug = href.slice("marketplace:".length);
+      const to = slug ? `/marketplace?ref=${encodeURIComponent(slug)}` : "/marketplace";
+      return (
+        <a
+          href={to}
+          className="text-primary font-medium underline underline-offset-2 hover:text-primary/80 inline-flex items-center gap-0.5"
+          title={`Voir ${slug || "tous les acteurs HDF"} dans la Marketplace ConX`}
+        >
+          {p.children}
+          <span aria-hidden className="text-[9px] opacity-60">↗</span>
+        </a>
+      );
+    }
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="text-primary underline underline-offset-2 hover:text-primary/80"
+      >
+        {p.children}
+      </a>
+    );
+  },
 };
 
 const SLOW_PLAN_THRESHOLD_MS = 90_000; // 90 s — bouton "Use cache" apparaît
@@ -346,7 +366,7 @@ export function PlanChat({ building }: Props) {
       if (!ok) {
         setError(
           `Plan v${nextVersion} non disponible en cache. Pour itérer en live, ` +
-            `recliquez "Générer un plan rénovation IA".`,
+            `recliquez "Générer le pré-cadrage rénovation".`,
         );
       }
       setBusy(false);
@@ -395,7 +415,7 @@ export function PlanChat({ building }: Props) {
           ) : (
             <Sparkles className="h-4 w-4 mr-1.5" />
           )}
-          {busy ? "Génération…" : "Générer un plan rénovation IA"}
+          {busy ? "Génération…" : "Générer le pré-cadrage rénovation"}
         </Button>
         <Button
           className="w-full"
@@ -416,8 +436,10 @@ export function PlanChat({ building }: Props) {
           Utiliser le plan pré-calculé
         </Button>
         <p className="text-[11px] text-muted-foreground leading-snug">
-          L'agent Plan (Claude Opus 4.7) génère un plan complet hors-site biosourcé
-          en ~60-90 s. Coût ~0.30 €. Cache disponible pour les bâtiments vedettes.
+          Génération d'un pré-cadrage rénovation hors-site biosourcé complet
+          en ~60-90 s. Diagnostic, stratégie, bilan carbone 30 ans, budget,
+          aides éligibles. Un plan pré-calculé reste disponible pour les
+          bâtiments vedettes en cas d'attente trop longue.
         </p>
         {error && (
           <div className="text-xs text-destructive flex items-start gap-1.5">

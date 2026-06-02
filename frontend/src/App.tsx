@@ -5,6 +5,7 @@ import { Footer } from "@/components/Footer";
 import { StrategiePage } from "@/pages/Strategie";
 import { ProjetPage } from "@/pages/Projet";
 import { IfcPage } from "@/pages/Ifc";
+import { MarketplacePage } from "@/pages/Marketplace";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/projet" element={<ProjetPage />} />
           <Route path="/projet/:id" element={<ProjetPage />} />
           <Route path="/ifc" element={<IfcPage />} />
+          <Route path="/marketplace" element={<MarketplacePage />} />
           <Route path="*" element={<Navigate to="/strategie" replace />} />
         </Routes>
       </main>

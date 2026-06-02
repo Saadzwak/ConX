@@ -1,12 +1,13 @@
 import { NavLink, Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Building2, Map, FileCheck2 } from "lucide-react";
+import { Building2, Map, FileCheck2, Store } from "lucide-react";
 import { Logo } from "@/components/Logo";
 
 const NAV_LINKS = [
   { to: "/strategie", label: "Stratégie", icon: Map },
   { to: "/projet", label: "Projet", icon: Building2 },
   { to: "/ifc", label: "Conformité IFC", icon: FileCheck2 },
+  { to: "/marketplace", label: "Marketplace", icon: Store },
 ];
 
 export function Nav() {

@@ -27,6 +27,7 @@ import {
   Building2,
   ChevronDown,
   ChevronUp,
+  HelpCircle,
   MapPin,
   ShieldCheck,
   Flame,
@@ -54,6 +55,7 @@ import { useCountUp } from "@/lib/useCountUp";
 
 import { ProjetMap } from "@/map/ProjetMap";
 import { PlanChat } from "@/components/PlanChat";
+import { ScoreInfoDialog } from "@/components/ScoreInfoDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { dpeColor, cn } from "@/lib/utils";
@@ -79,7 +81,7 @@ function EmptyProjet() {
       <h1 className="text-2xl font-semibold mb-2">Mode Projet</h1>
       <p className="text-muted-foreground mb-6">
         Sélectionnez un bâtiment depuis la carte Stratégie pour ouvrir son
-        dashboard, générer un plan rénovation IA et explorer la 3D.
+        dashboard, générer un pré-cadrage rénovation et explorer la 3D.
       </p>
       <div className="flex gap-2 flex-wrap">
         <Button asChild>
@@ -256,12 +258,36 @@ function CompactCard({ building }: { building: BuildingDetail }) {
   const dpe = building.dpe_classe ?? "?";
   const dpeIsReal = building.dpe_source === "ademe-real";
   const adresse = building.adresse_postale ?? building.building_id;
+  // Onboarding score : ouvert auto au premier landing, click circle pour ré-ouvrir.
+  const [scoreDialogOpen, setScoreDialogOpen] = useState(false);
+  useEffect(() => {
+    try {
+      if (!window.localStorage.getItem("conx-score-onboarded")) {
+        setScoreDialogOpen(true);
+        window.localStorage.setItem("conx-score-onboarded", "1");
+      }
+    } catch {
+      // localStorage indispo (Safari private mode) — no-op
+    }
+  }, []);
 
   return (
     <div className="p-4 space-y-4 text-sm">
+      <ScoreInfoDialog
+        open={scoreDialogOpen}
+        onClose={() => setScoreDialogOpen(false)}
+      />
       {/* Identité + score */}
       <section className="flex items-start gap-3">
-        <ScoreCircle score={score} />
+        <button
+          type="button"
+          onClick={() => setScoreDialogOpen(true)}
+          className="rounded-full hover:ring-2 hover:ring-primary/30 transition-shadow"
+          title="Comprendre le score ConX"
+          aria-label="Ouvrir l'explication du score"
+        >
+          <ScoreCircle score={score} />
+        </button>
         <div className="flex-1 min-w-0">
           <DpeBadge classe={dpe} source={building.dpe_source ?? "—"} large />
           <div className="mt-2 flex items-start gap-1.5">
@@ -347,7 +373,18 @@ function CompactCard({ building }: { building: BuildingDetail }) {
 
       {/* Composantes scoring — radar visuel + barres détaillées */}
       <section className="space-y-1.5">
-        <SectionTitle>Composantes du score</SectionTitle>
+        <div className="flex items-center justify-between">
+          <SectionTitle>Composantes du score</SectionTitle>
+          <button
+            type="button"
+            onClick={() => setScoreDialogOpen(true)}
+            className="text-[11px] text-muted-foreground hover:text-primary inline-flex items-center gap-0.5 transition-colors"
+            title="Comprendre le calcul du score"
+          >
+            <HelpCircle className="h-3 w-3" />
+            <span>aide</span>
+          </button>
+        </div>
         <ScoreRadar
           s_co2={building.s_co2}
           s_faisa={building.s_faisa}
@@ -380,6 +417,7 @@ function CompactCard({ building }: { building: BuildingDetail }) {
             value={fmtT(building.co2_evite_t)}
             unit="tCO₂"
             animateNumber={building.co2_evite_t ?? null}
+            tooltip="Tonnes de CO₂ évitées sur 30 ans après rénovation. Calcul déterministe : surface × ΔkWh ep/m²/an × facteur émission ADEME × 30."
           />
           <BigStat
             label="Coût op."
@@ -390,12 +428,14 @@ function CompactCard({ building }: { building: BuildingDetail }) {
                 : null
             }
             unit={building.cout_estime_eur != null && building.cout_estime_eur >= 1000 ? "k€" : "€"}
+            tooltip="Coût estimatif filière HDF 2025 d'une rénovation hors-site biosourcée pour ce profil (ITE + toiture + menuiseries + systèmes). Fourchette indicative à confirmer par devis."
           />
           <BigStat
             label="€/tCO₂"
             value={fmtMoneyShort(building.cout_eur_par_t_co2)}
             animateNumber={building.cout_eur_par_t_co2 ?? null}
             unit="€"
+            tooltip="Ratio coût / efficacité climatique : € investis par tonne de CO₂ évitée. Plus c'est bas, plus la rénovation est efficiente. Référence ADEME pour le neuf : 300-500 €/tCO₂."
           />
         </div>
       </section>
@@ -483,11 +523,11 @@ function ContextBadges({
     });
   }
   items.push({
-    label: dpeIsReal ? "DPE réel ADEME" : "DPE estimé IA",
+    label: dpeIsReal ? "DPE réel ADEME" : "DPE estimé statistique",
     tone: dpeIsReal ? "default" : "muted",
     tooltip: dpeIsReal
       ? "Diagnostic de Performance Énergétique officiel issu de la base ADEME (observatoire-dpe-audit.ademe.fr)."
-      : "Diagnostic estimé par modèle Random Forest entraîné sur les DPE ADEME existants — à confirmer par diagnostic réel avant travaux.",
+      : "Diagnostic estimé statistiquement à partir des caractéristiques bâti et du DPE du voisinage — à confirmer par diagnostic réel avant travaux.",
   });
   if (items.length === 0) return null;
   return (
@@ -512,7 +552,7 @@ function ExpertSections({ building }: { building: BuildingDetail }) {
         {building.diagnostic_technique ? (
           <DiagnosticPanel diag={building.diagnostic_technique} />
         ) : (
-          <EmptyPanel msg="Diagnostic technique non disponible pour ce bâtiment (DPE estimé IA ou DPE pré-2021)." />
+          <EmptyPanel msg="Diagnostic technique non disponible pour ce bâtiment (DPE estimé statistique ou DPE pré-2021)." />
         )}
       </SectionAccordion>
 
@@ -1191,6 +1231,7 @@ function BigStat({
   value,
   unit,
   animateNumber,
+  tooltip,
 }: {
   label: string;
   value: string;
@@ -1198,9 +1239,17 @@ function BigStat({
   /** Si fourni, anime la valeur numérique en count-up. Le rendu est formaté
    * via Intl.NumberFormat fr-FR. La prop `value` est ignorée si présente. */
   animateNumber?: number | null;
+  /** Tooltip natif au hover, explique la métrique. */
+  tooltip?: string;
 }) {
   return (
-    <div className="rounded-md bg-card border border-border px-2 py-1.5 text-center">
+    <div
+      className={cn(
+        "rounded-md bg-card border border-border px-2 py-1.5 text-center",
+        tooltip && "cursor-help hover:border-primary/30 transition-colors",
+      )}
+      title={tooltip}
+    >
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="text-sm font-bold tabular-nums">
         {animateNumber !== undefined && animateNumber !== null ? (

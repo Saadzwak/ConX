@@ -22,7 +22,7 @@ export function BuildingDrawer({ building, onClose }: Props) {
   const dpeSource =
     building.dpe_source === "ademe-real"
       ? { label: "DPE réel ADEME", tone: "default" as const }
-      : { label: "DPE estimé IA", tone: "secondary" as const };
+      : { label: "DPE estimé statistique", tone: "secondary" as const };
 
   return (
     <aside className="w-96 border-l bg-card shrink-0 flex flex-col overflow-hidden">

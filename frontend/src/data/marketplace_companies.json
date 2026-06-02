@@ -1,0 +1,310 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "generated_at": "2026-06-02",
+    "scope": "Hauts-de-France (Nord 59, Pas-de-Calais 62, Somme 80, Oise 60, Aisne 02)",
+    "purpose": "Annuaire d'entreprises réelles HDF actives dans la rénovation hors-site biosourcée pour la marketplace ConX",
+    "sources_principales": [
+      "Fibois Hauts-de-France (https://www.fibois-hdf.fr/)",
+      "CD2E Pacte Bois-Biosourcés (https://cd2e.com/offres-de-services/structuration-de-filieres/pacte-bois-biosources/)",
+      "Sites officiels des entreprises listées",
+      "annuaire-entreprises.data.gouv.fr",
+      "Le Moniteur, Le Journal des Entreprises"
+    ],
+    "regles_inclusion": [
+      "Site web actif vérifié",
+      "Implantation HDF confirmée (59/62/80/60/02)",
+      "Activité réelle dans la filière rénovation hors-site et/ou biosourcée",
+      "Bailleurs sociaux signataires du Pacte exclus (MOA, pas fournisseurs marketplace)"
+    ],
+    "categories": [
+      "menuiseries",
+      "ite-mob",
+      "isolation-biosourcee",
+      "be-thermique",
+      "pose-installation",
+      "systemes-energetiques",
+      "architecture",
+      "etancheite",
+      "reseau"
+    ],
+    "regle_pacte_bois_biosource": "true uniquement pour les partenaires techniques officiels du Pacte recensés sur le site CD2E/Fibois HDF, pas pour les simples participants au forum."
+  },
+  "companies": [
+    {
+      "name": "Goudalle Charpente",
+      "slug": "goudalle-charpente",
+      "category": "ite-mob",
+      "ville": "Preures",
+      "departement": "62",
+      "website": "https://goudallecharpente.fr/",
+      "specialites": ["Charpente bois", "CLT (bois lamellé croisé)", "Lamellé-collé", "Préfabrication grande échelle"],
+      "description": "Une des plus importantes entreprises de construction bois des Hauts-de-France (30 000 m² posés/an), premier centre d'usinage CLT 5 axes en région.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Alternative Bois Concept",
+      "slug": "alternative-bois-concept",
+      "category": "ite-mob",
+      "ville": "Sains-en-Gohelle",
+      "departement": "62",
+      "website": "https://www.alternativeboisconcept.fr/",
+      "specialites": ["Ossature bois", "Rénovation passive", "Maisons passives biosourcées", "Construction sur mesure"],
+      "description": "SCOP Qualibat spécialisée en construction et rénovation passive ossature bois avec matériaux biosourcés. Plus de 100 bâtiments écologiques réalisés en HDF.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Edwood",
+      "slug": "edwood",
+      "category": "ite-mob",
+      "ville": "La Madeleine",
+      "departement": "59",
+      "website": "https://www.edwood.fr/",
+      "specialites": ["Ossature bois", "Charpente traditionnelle", "Extensions et surélévations", "Maisons individuelles"],
+      "description": "Constructeur bois 40 salariés, nouvel atelier-siège démonstrateur écoresponsable en métropole lilloise (2024). Partenaire technique du Pacte Bois-Biosourcés HDF.",
+      "pacte_bois_biosource": true
+    },
+    {
+      "name": "Ambois",
+      "slug": "ambois",
+      "category": "ite-mob",
+      "ville": "Fauquembergues",
+      "departement": "62",
+      "website": "https://www.ambois.com/",
+      "specialites": ["Charpente traditionnelle", "Ossature bois BBC et passive", "Lamellé-collé", "Bardage"],
+      "description": "33 salariés, centre d'usinage CNC, BE intégré. Préfabrique ossatures, panneaux et menuiseries extérieures pour optimiser la pose chantier.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "BSM (Bois Sciés Manufactures)",
+      "slug": "bsm-bois-scies-manufactures",
+      "category": "ite-mob",
+      "ville": "Comines",
+      "departement": "59",
+      "website": "https://www.b-s-m.fr/",
+      "specialites": ["Lamellé-collé", "Ossature bois", "BE structure", "Préfabrication"],
+      "description": "Seul industriel HDF intégré conception/fabrication/pose en lamellé-collé : BE + site industriel + équipes charpentiers internes.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "2C2B - La Maison du Charpentier",
+      "slug": "2c2b-maison-charpentier",
+      "category": "ite-mob",
+      "ville": "Bohain-en-Vermandois",
+      "departement": "02",
+      "website": "https://www.2c2b.fr/",
+      "specialites": ["Charpente traditionnelle et lamellé", "Ossature bois isolée paille", "Bardage", "ITE bois"],
+      "description": "Spécialiste ossature bois isolée paille pour ERP et marchés publics HDF : 80% des bâtiments réalisés sont en paille, bois non traités chimiquement.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Création Bois Construction",
+      "slug": "creation-bois-construction",
+      "category": "ite-mob",
+      "ville": "Lys-lez-Lannoy",
+      "departement": "59",
+      "website": "https://www.constructionsbois21.fr/Creation-Bois-Construction-399",
+      "specialites": ["Ossature bois préfabriquée", "Charpente traditionnelle", "Façades bois", "Filiale CEDRA/NGE"],
+      "description": "Usine de préfabrication de 25 000 m² de murs et façades ossature bois par an. Filiale CEDRA du groupe NGE, 40 ans d'expérience en construction bois.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Isol'En Nord",
+      "slug": "isol-en-nord",
+      "category": "ite-mob",
+      "ville": "Ferrière-la-Grande",
+      "departement": "59",
+      "website": "https://isolennord.com/",
+      "specialites": ["Préfabrication ossature bois pré-isolée", "Modules 2D/3D", "Isolants biosourcés (paille, fibre bois, ouate)", "Hors-site"],
+      "description": "Atelier de fabrication hors-site (juin 2023) de modules ossature bois grande taille pré-isolés en biosourcé pour charpentiers et entreprises générales.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Charpentier des Flandres",
+      "slug": "charpentier-des-flandres",
+      "category": "pose-installation",
+      "ville": "Méteren",
+      "departement": "59",
+      "website": "https://www.charpentier-des-flandres.com/",
+      "specialites": ["Charpente traditionnelle", "Rénovation patrimoine", "BBC et passif", "Marchés publics"],
+      "description": "Établi depuis 1935, charpentier expert en restauration d'églises/châteaux HDF et Belgique, intervient aussi sur projets HQE et passifs.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Activ Paille",
+      "slug": "activ-paille",
+      "category": "isolation-biosourcee",
+      "ville": "Itancourt",
+      "departement": "02",
+      "website": "https://www.activ-paille.com/",
+      "specialites": ["Murs ossature bois isolés paille", "Préfabrication industrielle", "Brevet panneaux paille classés feu", "Filière locale"],
+      "description": "Usine (ex-site Nestlé, 2021) de panneaux préfabriqués ossature bois + isolation paille, brevet feu déposé. Partenaire technique Pacte Bois-Biosourcés HDF.",
+      "pacte_bois_biosource": true
+    },
+    {
+      "name": "Bâtilin",
+      "slug": "batilin",
+      "category": "isolation-biosourcee",
+      "ville": "Bourbourg",
+      "departement": "59",
+      "website": "https://batilin.fr/",
+      "specialites": ["Blocs isolants béton de lin", "Anas de lin local", "Régulation hygrothermique", "Carbone négatif"],
+      "description": "Bloc isolant 100% lin HDF (anas de L.A. Linière à Bourbourg). Bilan carbone négatif, montée en cadence à 1500-2000 blocs/jour en 2027. Partenaire Pacte BB HDF.",
+      "pacte_bois_biosource": true
+    },
+    {
+      "name": "Le Relais Métisse",
+      "slug": "le-relais-metisse",
+      "category": "isolation-biosourcee",
+      "ville": "Billy-Berclau",
+      "departement": "62",
+      "website": "https://www.isolantmetisse.com/",
+      "specialites": ["Isolation textile recyclé", "Rouleaux et panneaux", "Label biosourcé Filière Française", "Économie sociale et solidaire"],
+      "description": "1er isolant thermo-acoustique textile recyclé labelisé biosourcé Filière Française, fabriqué à partir de jeans collectés par Le Relais (SIAE).",
+      "pacte_bois_biosource": true
+    },
+    {
+      "name": "Salola Environnement",
+      "slug": "salola-environnement",
+      "category": "isolation-biosourcee",
+      "ville": "Hargnies",
+      "departement": "59",
+      "website": "https://salola.fr/",
+      "specialites": ["Étanchéité à l'air", "Pare-pluie / pare-vapeur / frein-vapeur", "Fibres chanvre, bois, ouate", "Solutions enveloppe MOB"],
+      "description": "Concepteur-distributeur de solutions d'étanchéité à l'air et enveloppe pour MOB depuis 2013. Démarche RSE certifiée AFNOR. Partenaire technique Pacte BB HDF.",
+      "pacte_bois_biosource": true
+    },
+    {
+      "name": "L.A. Linière",
+      "slug": "la-liniere",
+      "category": "isolation-biosourcee",
+      "ville": "Bourbourg",
+      "departement": "59",
+      "website": "https://www.laliniere.fr/",
+      "specialites": ["Coopérative lin HDF", "Anas pour bâtiment", "400 adhérents agriculteurs", "Fournisseur Bâtilin"],
+      "description": "Coopérative agricole lin (400 adhérents, 70 salariés, 20 M EUR CA) à l'origine de Bâtilin. Filière 100% locale du champ au bloc isolant.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Cogebloc / Cogetherm",
+      "slug": "cogebloc-cogetherm",
+      "category": "ite-mob",
+      "ville": "Dunkerque",
+      "departement": "59",
+      "website": "https://www.cogetherm.com/",
+      "specialites": ["Blocs monomur pierre ponce géosourcée", "Mur porteur isolant intégré", "Solution complément MOB", "Adhérent CD2E"],
+      "description": "Fabricant à Dunkerque de blocs monomur en pierre ponce (géosourcé, pas biosourcé). Solution mur porteur isolant complémentaire MOB. Partenaire Pacte BB HDF.",
+      "pacte_bois_biosource": true
+    },
+    {
+      "name": "Lavogez",
+      "slug": "lavogez",
+      "category": "menuiseries",
+      "ville": "Preures",
+      "departement": "62",
+      "website": "https://lavogez.fr/",
+      "specialites": ["Menuiseries bois extérieures", "Escaliers bois sur mesure", "Bois local PEFC", "Scierie et séchoirs intégrés"],
+      "description": "Manufacture familiale 40 ans, ateliers à Herly/Preures/Aire-sur-la-Lys. Maîtrise chaîne complète grume-produit fini via scierie et séchoirs propres.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Axoé",
+      "slug": "axoe",
+      "category": "be-thermique",
+      "ville": "Marcq-en-Barœul",
+      "departement": "59",
+      "website": "https://fr.linkedin.com/company/axo%C3%A9",
+      "specialites": ["BE pluridisciplinaire", "Structure bois", "Fluides", "Thermique", "Ingénierie écologique"],
+      "description": "BE généraliste à regard écologique, intervient sur structure, fluides, électricité, thermique pour construction et réhabilitation bas-carbone.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Ithaque Rénovation",
+      "slug": "ithaque-renovation",
+      "category": "be-thermique",
+      "ville": "Lille",
+      "departement": "59",
+      "website": "https://www.ithaque-renovation.fr/",
+      "specialites": ["Audit énergétique", "DPE", "Mon Accompagnateur Rénov'", "BE thermique RGE OPQIBI"],
+      "description": "BE thermique indépendant certifié RGE OPQIBI, Mon Accompagnateur Rénov', éradique passoires thermiques pour ménages lillois (audit à chantier).",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "ALTEREA - Agence Lille",
+      "slug": "alterea-lille",
+      "category": "be-thermique",
+      "ville": "Lille",
+      "departement": "59",
+      "website": "https://www.alterea.fr/bureau-etudes-lille-alterea",
+      "specialites": ["AMO transition énergétique", "Rénovation logement social", "Audits réglementaires", "Matériaux biosourcés"],
+      "description": "Agence Nord d'ALTEREA (415 collab.), accompagne collectivités/bailleurs HDF en rénovation énergétique, intègre bois et fibre biosourcée.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Atelier 243",
+      "slug": "atelier-243",
+      "category": "architecture",
+      "ville": "Amiens",
+      "departement": "80",
+      "website": "https://www.atelier243.fr/fr",
+      "specialites": ["Architecture environnementale", "Réhabilitation", "Marchés publics et privés", "Échelles bâtiment à urbain"],
+      "description": "Agence d'architecture créée en 2018 par Thomas Beurrier HMNOP, intervient HDF en construction neuve et réhabilitation avec approche bas-carbone dès la conception.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Envergure Architectes",
+      "slug": "envergure-architectes",
+      "category": "architecture",
+      "ville": "Saint-Omer",
+      "departement": "62",
+      "website": "https://www.envergure-architectes.com/",
+      "specialites": ["Architecte-constructeur", "Préfabrication en usine", "Marché Côte d'Opale", "Approche clé en main"],
+      "description": "Architecte-constructeur dirigé par Fabien Prouvost (réseau Les Architecteurs). Maîtrise complète conception-réalisation avec préfabrication en usine.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Toerana Habitat",
+      "slug": "toerana-habitat",
+      "category": "reseau",
+      "ville": "Lille",
+      "departement": "59",
+      "website": "https://www.toerana-habitat.fr/",
+      "specialites": ["Coopérative SCOP CAE BTP", "Éco-construction et éco-rénovation", "100 entrepreneurs adhérents", "Formation intégrée"],
+      "description": "Plus grande coopérative d'activités et d'emploi du BTP en HDF (100 entrepreneurs), dédiée à l'éco-construction. Hébergement administratif, formations, mutualisation.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Plateforme Bois HDF / Avivio",
+      "slug": "plateforme-bois-hdf-avivio",
+      "category": "reseau",
+      "ville": "Villeneuve-d'Ascq",
+      "departement": "59",
+      "website": "https://www.avivio.fr/",
+      "specialites": ["SCIC filière bois local HDF", "Marque Avivio (origine + traçabilité)", "Coopérative forestière + scieurs", "Approvisionnement local"],
+      "description": "SCIC créée en 2020 regroupant coopérative forestière et 4 scieurs/transformateurs HDF. Marque Avivio garantit bois 100% planté, récolté et transformé en HDF.",
+      "pacte_bois_biosource": true
+    },
+    {
+      "name": "FRD-CODEM",
+      "slug": "frd-codem",
+      "category": "reseau",
+      "ville": "Amiens",
+      "departement": "80",
+      "website": "https://batlab.fr/",
+      "specialites": ["Centre Ressources Technologiques", "Bétons biosourcés (chanvre, lin, paille, miscanthus, colza)", "Caractérisation éco-matériaux", "R&D filière"],
+      "description": "Centre de Ressources Technologiques dédié aux éco-matériaux et biosourcés depuis 2007, hall d'essais et chambre de cure pour bétons biosourcés à Amiens.",
+      "pacte_bois_biosource": false
+    },
+    {
+      "name": "Fibois Hauts-de-France",
+      "slug": "fibois-hauts-de-france",
+      "category": "reseau",
+      "ville": "Amiens",
+      "departement": "80",
+      "website": "https://www.fibois-hdf.fr/",
+      "specialites": ["Interprofession forêt-bois HDF", "Pôle d'Excellence régional", "Annuaire 200+ adhérents", "Animation Pacte Bois-Biosourcés"],
+      "description": "Interprofession régionale forêt-bois (siège Amiens, locaux Villeneuve-d'Ascq) animant filière bois et le Pacte Bois-Biosourcés HDF avec le CD2E.",
+      "pacte_bois_biosource": false
+    }
+  ]
+}

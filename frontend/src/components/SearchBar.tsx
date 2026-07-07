@@ -25,15 +25,26 @@ export function SearchBar({ onPick }: Props) {
       setResults([]);
       return;
     }
+    // AbortController : annule la requête en vol au changement de saisie, sinon
+    // une réponse lente (« lil ») peut arriver après une plus récente (« lille »)
+    // et écraser les bons résultats (race). Le .catch avale l'AbortError + les
+    // erreurs réseau (fetch qui throw). Cf. AUDIT M9.
+    const ctrl = new AbortController();
     timerRef.current = window.setTimeout(() => {
-      geocodeAddress(q, 6).then((feats) => {
-        setResults(feats);
-        setOpen(true);
-        setHi(0);
-      });
+      geocodeAddress(q, 6, ctrl.signal)
+        .then((feats) => {
+          if (ctrl.signal.aborted) return;
+          setResults(feats);
+          setOpen(true);
+          setHi(0);
+        })
+        .catch(() => {
+          if (!ctrl.signal.aborted) setResults([]);
+        });
     }, 250);
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
+      ctrl.abort();
     };
   }, [q]);
 

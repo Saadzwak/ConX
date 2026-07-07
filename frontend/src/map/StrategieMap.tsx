@@ -39,6 +39,10 @@ export function StrategieMap({ bbox, filters, onBuildingClick, onMapMove }: Prop
   const [data, setData] = useState<BuildingListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Vrai si la vue contient PLUS de bâtiments que ceux affichés (API tronquée à
+  // `limit` → next_cursor non nul). Sert à ne pas présenter un sous-ensemble
+  // comme un décompte exhaustif. Cf. AUDIT M10.
+  const [truncated, setTruncated] = useState(false);
 
   // Init MapLibre une seule fois
   useEffect(() => {
@@ -101,6 +105,7 @@ export function StrategieMap({ bbox, filters, onBuildingClick, onMapMove }: Prop
     const zoom = mapRef.current?.getZoom() ?? 0;
     if (zoom < 11) {
       setData([]);
+      setTruncated(false);
       return;
     }
     const ctrl = new AbortController();
@@ -118,7 +123,10 @@ export function StrategieMap({ bbox, filters, onBuildingClick, onMapMove }: Prop
       },
       ctrl.signal,
     )
-      .then((resp) => setData(resp.items))
+      .then((resp) => {
+        setData(resp.items);
+        setTruncated(resp.next_cursor != null);
+      })
       .catch((e) => {
         if ((e as Error).name === "AbortError") return;
         setError((e as Error).message);
@@ -160,8 +168,11 @@ export function StrategieMap({ bbox, filters, onBuildingClick, onMapMove }: Prop
     if (error) return `Erreur : ${error}`;
     if (loading) return "Chargement…";
     if (!bbox) return null;
-    return `${data.length.toLocaleString("fr-FR")} bâtiments`;
-  }, [data, loading, error, bbox]);
+    const n = data.length.toLocaleString("fr-FR");
+    return truncated
+      ? `${n}+ bâtiments (vue partielle — zoomez pour affiner)`
+      : `${n} bâtiments`;
+  }, [data, loading, error, bbox, truncated]);
 
   return (
     <div className="relative h-full w-full">

@@ -24,7 +24,7 @@ import {
   Minimize2,
   X,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
@@ -129,6 +129,14 @@ const MD_COMPONENTS = {
   },
 };
 
+// Sanitization des URL du markdown IA. On autorise le scheme custom
+// `marketplace:` (liens fournisseurs HDF) MAIS on délègue tout le reste à la
+// sanitization par défaut de react-markdown (qui bloque `javascript:` / `data:`).
+// L'ancien `(url) => url` désactivait toute sanitization → XSS au clic sur un
+// lien du plan (jumeau navigateur de C1). Cf. docs/AUDIT_2026-07-07.md M6.
+const safeUrlTransform = (url: string): string =>
+  url.startsWith("marketplace:") ? url : defaultUrlTransform(url);
+
 const SLOW_PLAN_THRESHOLD_MS = 90_000; // 90 s — bouton "Use cache" apparaît
 
 interface PlanVersion {
@@ -138,6 +146,7 @@ interface PlanVersion {
   status: "streaming" | "idle" | "error" | "terminated";
   started_at: number; // epoch ms
   ended_at?: number;
+  fromCache?: boolean; // plan pré-calculé substitué (fallback) — signalé à l'UI
 }
 
 interface Props {
@@ -190,24 +199,31 @@ export function PlanChat({ building }: Props) {
 
   /** Affiche le plan en cache (fallback). */
   const loadFromCache = useCallback(
-    async (version: number) => {
+    // `userMessage` : la vraie question de l'utilisateur si on la connaît (ex.
+    // depuis sendNext). Sinon on réutilise celle de la version existante, sinon
+    // un libellé neutre — JAMAIS un message fabriqué (« plutôt chanvre »), qui
+    // mentait à l'écran quand la question réelle était autre. Cf. AUDIT M8.
+    async (version: number, userMessage?: string | null) => {
       const cached = await getCachedPlan(building.building_id, version);
       if (!cached) {
         setError(`Pas de plan v${version} en cache pour ce bâtiment.`);
         return false;
       }
-      const cacheVersion: PlanVersion = {
-        version,
-        user_message:
+      setVersions((vs) => {
+        const existing = vs.find((v) => v.version === version);
+        const resolvedMsg =
           version === 1
             ? null
-            : "Et plutôt avec du chanvre comme matériau dominant ?",
-        agent_text: cached.plan_text,
-        status: "idle",
-        started_at: Date.now(),
-        ended_at: Date.now(),
-      };
-      setVersions((vs) => {
+            : (userMessage ?? existing?.user_message ?? "(question précédente)");
+        const cacheVersion: PlanVersion = {
+          version,
+          user_message: resolvedMsg,
+          agent_text: cached.plan_text,
+          status: "idle",
+          fromCache: true,
+          started_at: existing?.started_at ?? Date.now(),
+          ended_at: Date.now(),
+        };
         const without = vs.filter((v) => v.version !== version);
         return [...without, cacheVersion].sort((a, b) => a.version - b.version);
       });
@@ -392,7 +408,7 @@ export function PlanChat({ building }: Props) {
     // démo : Wazemmes v2 chanvre est pré-caché). Si absent → message clair.
     if (sessionId.startsWith("cache:")) {
       const nextVersion = (activeVersion ?? 1) + 1;
-      const ok = await loadFromCache(nextVersion);
+      const ok = await loadFromCache(nextVersion, content);
       if (!ok) {
         setError(
           `Plan v${nextVersion} non disponible en cache. Pour itérer en live, ` +
@@ -642,7 +658,7 @@ export function PlanChat({ building }: Props) {
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={MD_COMPONENTS}
-                  urlTransform={(url) => url}
+                  urlTransform={safeUrlTransform}
                 >
                   {active.agent_text}
                 </ReactMarkdown>
@@ -671,6 +687,12 @@ export function PlanChat({ building }: Props) {
 
       {/* Active version content — rendu markdown (GFM tables, listes, etc.) */}
       <div className="flex-1 overflow-y-auto p-3 text-[12.5px] leading-relaxed">
+        {active?.fromCache && (
+          <div className="mb-2 inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
+            <Database className="h-3 w-3" />
+            Plan pré-calculé (démo)
+          </div>
+        )}
         {active?.user_message && (
           <div className="mb-3 pb-3 border-b text-foreground/80 text-xs">
             <strong className="text-foreground">Vous :</strong> {active.user_message}
@@ -681,13 +703,9 @@ export function PlanChat({ building }: Props) {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={MD_COMPONENTS}
-              // ⚠ CRITIQUE — react-markdown v9 sanitize les URL schemes
-              // non-standards (« marketplace: »). Sans `urlTransform`, le
-              // href des liens `[Nom](marketplace:slug)` est remplacé par
-              // une string vide → le composant <Link> ne navigue pas
-              // (reste sur /projet/...). Le bug "lien marketplace mène à
-              // la page projet" identifié par Saad est résolu ici.
-              urlTransform={(url) => url}
+              // Autorise `marketplace:` (liens fournisseurs HDF) tout en gardant
+              // la sanitization par défaut (bloque javascript:/data:). Cf. M6.
+              urlTransform={safeUrlTransform}
             >
               {active.agent_text}
             </ReactMarkdown>

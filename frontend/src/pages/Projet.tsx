@@ -72,7 +72,10 @@ import {
 
 export function ProjetPage() {
   const { id } = useParams<{ id?: string }>();
-  return id ? <ProjetView id={id} /> : <EmptyProjet />;
+  // key={id} : force un remount complet au changement de bâtiment. Sinon l'état
+  // interne de PlanChat (session/versions) et de ProjetMap resterait collé du
+  // bâtiment précédent → plan de A affiché sous la fiche de B. Cf. AUDIT M7.
+  return id ? <ProjetView key={id} id={id} /> : <EmptyProjet />;
 }
 
 function EmptyProjet() {

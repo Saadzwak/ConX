@@ -523,10 +523,14 @@ export interface BanResponse {
   features: BanFeature[];
 }
 
-export async function geocodeAddress(q: string, limit = 5): Promise<BanFeature[]> {
+export async function geocodeAddress(
+  q: string,
+  limit = 5,
+  signal?: AbortSignal,
+): Promise<BanFeature[]> {
   if (!q.trim()) return [];
   const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=${limit}`;
-  const resp = await fetch(url);
+  const resp = await fetch(url, { signal });
   if (!resp.ok) return [];
   const json = (await resp.json()) as BanResponse;
   return json.features ?? [];

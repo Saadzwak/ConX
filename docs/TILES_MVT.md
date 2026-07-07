@@ -1,8 +1,15 @@
 # ConX — Tuilage vectoriel MVT (J7)
 
 **Statut** : pipeline opérationnel, vues 4326 matérialisées avec index GIST.
-**Dernière mise à jour** : 2026-05-22.
+**Dernière mise à jour** : 2026-07-08.
 **Service** : `martin` (Rust, https://martin.maplibre.org/) en sidecar Docker.
+
+> ⚠ **Màj audit 2026-07 (migration 014)** : les 3 vues matérialisées ont été
+> déplacées dans un schéma dédié **`tiles_pub`** et martin ne publie plus que
+> `tiles_pub` (`from_schemas: ["tiles_pub"]`). Les vues NON matérialisées
+> `tiles.*_v` (ST_Transform à la volée, jusqu'à 21 s/tuile) restent dans `tiles`
+> et ne sont **plus exposées** (DoS accidentel supprimé). Le port hôte martin est
+> **3010** (mappé sur le 3000 interne du conteneur). Refresh : `scripts/refresh_tiles_matviews.py`.
 
 ---
 
@@ -17,7 +24,7 @@ PostgreSQL/PostGIS  (postgres_local)
                             │
                             ▼  (auto-discovery)
                        martin (Rust)
-                       http://localhost:3000
+                       http://localhost:3010
                             │
                             ▼
                   GET /<view>/{z}/{x}/{y}
@@ -134,7 +141,7 @@ J5.15).
 
 ## 6. Endpoints exposés
 
-À `http://localhost:3000/` :
+À `http://localhost:3010/` :
 
 - `GET /catalog` → liste JSON des sources
 - `GET /{source_id}` → metadata tilejson
@@ -156,21 +163,21 @@ const layers = [
   // Zoom 7-9 : heatmap densité passoires par commune
   new MVTLayer({
     id: "heatmap",
-    data: `http://localhost:3000/commune_passoires_heatmap_mv/{z}/{x}/{y}`,
+    data: `http://localhost:3010/commune_passoires_heatmap_mv/{z}/{x}/{y}`,
     visible: zoom >= 7 && zoom < 10,
     getFillColor: (d) => colorByDensity(d.properties.pct_passoires),
   }),
   // Zoom 10-13 : centroïdes colorés par classe
   new MVTLayer({
     id: "centroids",
-    data: `http://localhost:3000/buildings_centroids_mv/{z}/{x}/{y}`,
+    data: `http://localhost:3010/buildings_centroids_mv/{z}/{x}/{y}`,
     visible: zoom >= 10 && zoom < 14,
     getFillColor: (d) => colorByDpeClass(d.properties.classe),
   }),
   // Zoom 14+ : polygones extrudés avec hauteur et score
   new MVTLayer({
     id: "polygons",
-    data: `http://localhost:3000/buildings_mv/{z}/{x}/{y}`,
+    data: `http://localhost:3010/buildings_mv/{z}/{x}/{y}`,
     visible: zoom >= 14,
     extruded: true,
     getElevation: (d) => d.properties.hauteur_m,

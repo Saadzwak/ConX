@@ -179,36 +179,12 @@ Voir **D-012** dans DECISIONS.md pour la trace décisionnelle.
 
 ---
 
-## B-005 — Pattern de vérification JWT Supabase côté backend
-
-**Date d'ouverture** : 2026-05-21
-**Statut** : OUVERT
-**Sévérité** : IMPACT MAJEUR (bloque J11)
-**Jalon impacté** : J11
-
-### Contexte
-Le backend FastAPI reçoit les JWT Supabase depuis le navigateur (header `Authorization: Bearer ...`). Il doit les vérifier pour authentifier la requête, et propager le JWT à `supabase-py` pour que les requêtes vers les tables `app` respectent la RLS (PostgREST lit `auth.uid()` à partir du JWT).
-
-Deux patterns possibles :
-1. **Vérification locale `PyJWT` avec le `JWT_SECRET` Supabase (HS256)** — rapide, offline, standard. Le JWT contient déjà `sub` (user_id) et les claims. Pas d'appel réseau.
-2. **Appel à `auth/v1/user` Supabase à chaque requête** — 1 round-trip réseau par requête, ralentit fortement.
-
-### Recommandation par défaut
-**Pattern 1** : `PyJWT` + `JWT_SECRET` (variable d'environnement `SUPABASE_JWT_SECRET`). Middleware FastAPI qui :
-- Décode et vérifie HS256 + audience + expiration.
-- Met `request.state.user_id`, `request.state.role`, `request.state.jwt` à disposition des routes.
-- Pour les appels `supabase-py` : utilise `create_client(SUPABASE_URL, jwt_token).table(...)` afin que la RLS Postgres voie le bon `auth.uid()`.
-
-### Décision attendue (à J11)
-Confirmer le pattern 1 (recommandé) ou imposer le pattern 2 si le partenaire a une contrainte de sécurité particulière.
-
----
-
 ## B-006 — ML estimation DPE : biais structurel vers classes médianes D/E (cible F/G ratée)
 
 **Date d'ouverture** : 2026-05-22
+**Statut** : **RESOLU** — modèle Random Forest retenu (D-020/D-021), prédiction massive LANCÉE : **2 705 160 lignes `ml-predicted`** en base (`public_data.dpe`) au 2026-07-08. Le STOP J5 §11 a bien été levé après arbitrage (cf. synthèse ci-dessous + docs/ML_DPE.md). L'ancienne mention « OUVERT / prédiction non lancée » était périmée.
 **Sévérité** : IMPORTANT (impact direct sur la valeur produit — cible passoires F/G)
-**Pour quand** : décision partenaire AVANT prédiction massive (brief J5 §11 STOP atteint)
+**Pour quand** : ~~décision partenaire AVANT prédiction massive~~ — tranchée.
 
 ### Contexte
 Modèle ML entraîné (v `560402f6`) sur 309 069 bâtiments (2 635 communes train, 1 128 test). Split spatial OK, métriques :
@@ -410,8 +386,9 @@ v2 reste mon choix par défaut tant que pas d'override. **STOP pour le GO parten
 ## B-007 — martin auto-discovery non restreint au schéma `tiles`
 
 **Date d'ouverture** : 2026-05-22
+**Statut** : **RESOLU** (audit Lot 3b, 2026-07) — martin publie désormais **uniquement** le schéma `tiles_pub` (3 vues matérialisées, migration 014). Les tables `public_data.*` et les vues `tiles.*_v` lentes ne sont plus exposées. Catalog vérifié = 3 sources `_mv`. Cf. docs/AUDIT_2026-07-07.md C5.
 **Sévérité** : MINEUR (localhost dev only — non bloquant J7, à fixer avant déploiement)
-**Pour quand** : J11 (proxy backend avec auth)
+**Pour quand** : ~~J11~~ — fait au chantier audit.
 
 ### Contexte
 La config `martin.yaml` spécifie `auto_publish.from_schemas: ["tiles"]` mais martin

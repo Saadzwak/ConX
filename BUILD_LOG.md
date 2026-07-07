@@ -1462,3 +1462,49 @@ hiérarchisés, listes proprement indentées, bold rendu, footer numéroté
   (validation CHANTIER 1 robustesse SSE de la session 16).
 - Pitch rehearsal possible.
 
+## 2026-07-08 — Chantier d'améliorations post-audit (branche `audit-fixes`)
+
+Reprise du projet après le concours. Audit approfondi puis corrections. Rapport
+complet : `docs/AUDIT_2026-07-07.md` (5 audits parallèles : backend, sécurité,
+frontend, data/infra, tests & docs → 6 critiques, 13 majeurs).
+
+**Découverte runtime majeure** : Supabase Cloud (projet free-tier) **injoignable**
+(DNS ne résout plus — projet en pause/supprimé). Backend rendu résilient (dégrade
+au lieu de 500). Anthropic OK. Démo WOW = plans pré-calculés en cache (sans cloud).
+
+**Commits** (branche `audit-fixes` ; `master` + tag `checkpoint-demo-working-2026-07-07` intacts) :
+- `c34232b` **Lot 1 sécurité démo** : LFI/SSRF WeasyPrint (exfil `.env` via export PDF)
+  → `url_fetcher` durci ; bypass auth + service_role durci (prod-guard, warnings,
+  `.env.example` sécurisé) ; upload IFC lu par chunks (anti-OOM). 47 tests.
+- `f177491` **Lot 2 robustesse runtime** : `asyncio.to_thread` sur IfcOpenShell/WeasyPrint/
+  Anthropic/supabase-py + timeout Anthropic ; IDOR SSE (vérif ownership, dégradation
+  propre si Supabase down) ; pagination `list_events` auto-paginée ; persistance
+  best-effort. Le canari advisor a révélé le Supabase down.
+- `6ac8938` **Lot 3a** : chemins config/data robustes Docker/dev (`app/paths.py`) →
+  suite de 8 fail + 2 collect-errors à **181 vert** ; FDES versionnée (M14).
+- `910daf7` **Lot 3b** : `schema_migrations` (fail-closed) — re-ingestion ne vide plus
+  les tuiles (C4) ; `scripts/refresh_tiles_matviews.py` créé ; migration 014 →
+  matviews dans `tiles_pub`, martin n'expose plus les vues `_v` lentes (21 s → 404, C5).
+- `fa42af8` **Lot 3c** : restore fail-loud si partiel (M11) ; Dockerfile prod sans
+  `--reload` (M13) ; tuning Postgres (shared_buffers=1GB… — **vérifié live**) ;
+  CI trigger `master` + libs WeasyPrint + job frontend (C6).
+- `b1e1ba6` **style** : `ruff format` backend + 6 lint → CI réellement passable.
+- `af21a0c` **Lot 4a frontend** : XSS `urlTransform` liens plan IA (M6, jumeau de C1) ;
+  remount fiche au changement de bâtiment (M7) ; fallback SSE honnête + badge (M8) ;
+  race SearchBar (M9) ; badge troncature carte (M10). Vérifié live via preview.
+- (ce commit) **Lot 5 doc** : CLAUDE.md (statut réel, drift schéma, jalons), README/
+  TILES ports 3010, BLOCKERS resync (B-005/006/007), DECISIONS D-027 Marketplace,
+  section carried-forward.
+
+**Reporté** (audit carried-forward) : dedup `lib/marketplace.ts`, découpage
+`Projet.tsx`, fail-closed ownership prod, 24 tests DB skip, bumps vite/react-router.
+
+**À la main de l'utilisateur** : (1) `pg_dump` de sauvegarde (DB irremplaçable + mutée
+depuis le tag) ; (2) merge `audit-fixes`→`master` OU push vers un remote privé (7 commits
+sur branche locale sans remote = pas durable) ; (3) réactiver Supabase ou assumer démo
+100 % locale.
+
+**Note sécurité** : C1/C2 rendent le bypass **safe-by-default en config**, pas impossible.
+Si une démo ngrok tourne encore avec `CONX_DEV_BYPASS_AUTH=1`, le vérifier avant d'exposer
+le tunnel.
+

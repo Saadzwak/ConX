@@ -2,9 +2,11 @@
 
 > **À toi, Claude, qui ouvre ce repo dans une nouvelle session : lis intégralement ce fichier avant tout autre.** Il est la référence unique. Quand quelque chose contredit ce fichier, ce fichier gagne. Quand tu changes quelque chose de structurant, mets ce fichier à jour.
 
-**Dernière mise à jour** : 2026-05-23 (Session 17 — B-013 résolu, PDF rendering fixé, regen live)
-**Version plan** : v1 (plan validé à 95 %, 7 points préparatoires en cours)
-**Statut** : Pré-implémentation (aucun code applicatif écrit avant validation des livrables prép.)
+**Dernière mise à jour** : 2026-07-08 (chantier d'améliorations post-audit — voir docs/AUDIT_2026-07-07.md)
+**Version plan** : v1 exécuté (jalons J1→J17+ livrés)
+**Statut** : **Livré / post-pitch**. Backend FastAPI `0.13.0-j13` (6 routers, 17 endpoints), frontend `0.14.0-j14` (6 pages dont Marketplace), base PostgreSQL locale peuplée (~3,12 M bâtiments + 3,14 M lignes DPE). Le concours CD2E × EuraTechnologies est passé (pitch deck livré). Itérations en cours : corrections issues de l'audit 2026-07-07 (branche `audit-fixes`).
+
+> ⚠ **Runtime au 2026-07-08** : Supabase Cloud (projet free-tier) est **injoignable** (DNS ne résout plus — projet en pause/supprimé). Le backend dégrade proprement (le WOW démo repose sur les plans pré-calculés en cache, sans Supabase). Anthropic reste joignable. Cf. docs/AUDIT_2026-07-07.md.
 
 ---
 
@@ -33,6 +35,7 @@
 | **D-009** | Managed Agents : PostGIS (local) via HTTP, reste via Skills bundles |
 | **D-010** | Repo privé, pas d'open source |
 | **D-011** | **Split stack data** : PostgreSQL+PostGIS local Docker pour données publiques massives, Supabase free tier pour Auth + projets utilisateurs uniquement. Volume Docker `./data/storage/` pour LAZ/glTF/IFC/PDF. |
+| **D-012 → D-027** | Voir `DECISIONS.md` (auth JWT HS256, ML DPE retenu, bâtiment vedette Wazemmes, INIES base statique, **D-027 Marketplace HDF**, etc.). Cette table ne liste que les décisions fondatrices ; `DECISIONS.md` est la source complète. |
 
 ---
 
@@ -46,6 +49,8 @@
 │    /strategie    deck.gl + MapLibre, BD Ortho WMTS streaming direct │
 │    /projet/:id   Three.js (LiDAR + ortho) + chat itératif SSE       │
 │    /ifc          drag-and-drop + rapport conformité                 │
+│    /marketplace[/commandes-groupees|/:slug]  annuaire entreprises   │
+│                  hors-site HDF + commandes groupées (D-027)         │
 │    Barre recherche d'adresse globale (BAN autocomplete)             │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │ HTTPS / SSE
@@ -145,6 +150,13 @@ Volume Docker (lu/écrit directement par FastAPI, séparé des bases) :
 
 Données publiques massives. Pas de RLS (lecture publique pour utilisateurs authentifiés du backend ; le backend met sa propre couche d'autorisation devant).
 
+> ⚠ **Drift schéma documenté vs réel** (constaté audit 2026-07-07) : le schéma ci-dessous est **indicatif**, la base réelle a divergé. En particulier : `public_data.ml_dpe_versions` (décrite plus bas) **n'existe pas** (les versions ML vivent en fichiers `data/storage/ml/*.pkl`) ; la table `public_data.dpe` réelle a **48 colonnes** (dont `raw_json`, flags d'anomalie) et non 9, et n'a pas `match_method`/`match_confidence` ; tables non documentées présentes : `topo_roads`, `topo_buildings`, `building_acces_chantier`, `building_neighborhood_train/predict`, `building_lidar`. Le **backend lit aussi en live** les 19 Go de schémas BDNB bruts `bdnb_2025_07_a_open_data_dep{02,59,60,62,80}` (`_fetch_bdnb_enrichment` — les dropper casse la fiche bâtiment).
+>
+> **Objets ajoutés au chantier post-audit (2026-07)** — cf. docs/AUDIT_2026-07-07.md :
+> - `public_data.schema_migrations(version, applied_at)` : suivi des migrations (Lot 3b) — empêche de rejouer 011/012 qui vidaient les tuiles.
+> - schéma `tiles_pub` : contient désormais les 3 vues matérialisées MVT (migration 014) ; martin publie `tiles_pub` uniquement (les vues `tiles.*_v` lentes ne sont plus exposées). Les `source_id` restent le nom de table → URLs frontend `/tiles/buildings_mv` inchangées.
+> - Tuning Postgres appliqué via docker-compose (`shared_buffers=1GB`, `work_mem=32MB`, `shm_size=1g`).
+
 ```
 public_data.buildings
   (building_id PK = batiment_groupe_id BDNB, rnb_id, dept, geom 2154,
@@ -228,6 +240,8 @@ Tous servis par routes FastAPI authentifiées (vérification rôle + propriétai
 ---
 
 ## 7. Plan de jalons (résumé)
+
+> **État 2026-07-08** : ce plan est **exécuté** — J1→J17 livrés + Marketplace (cf. §12). Seul **J21** (tests E2E Playwright) n'a pas été fait. Le tableau ci-dessous est conservé comme plan historique.
 
 Ordre : **données → moteur → IA → frontend → polish**. Détail dans `~/.claude/plans/brief-projet-plateforme-iridescent-bird.md` Section 4.
 
@@ -364,6 +378,8 @@ Tu ne décides JAMAIS seul sur :
 
 ## 11. Bloqueurs actifs (résumé — détail dans BLOCKERS.md)
 
+> **État 2026-07-08** : B-004 est **résolu** (démo locale, déploiement post-concours — BLOCKERS.md). B-012 (auth SSE) reste ouvert mais **contourné** en dev (voir Lot 2 audit : dégradation JWT-only). **Nouveau bloqueur runtime** : Supabase Cloud injoignable (projet free-tier en pause) — l'app dégrade proprement, mais la persistance sessions/plans/validations est HS tant que Supabase n'est pas réactivé. Cf. docs/AUDIT_2026-07-07.md.
+
 | ID | Sujet | Sévérité | Pour quand |
 |---|---|---|---|
 | ~~B-001~~ | ~~TTL session Managed Agents~~ | RESOLU 2026-05-22 | TTL ≥ **10 min 05 s** confirmé (run net), contexte retenu. Fallback replay-previous-plan **implémenté** (`_send_with_replay_fallback` + 5 tests). |
@@ -393,4 +409,10 @@ Tu ne décides JAMAIS seul sur :
 
 **J4 prêt** (commit `b498f38`) : table `public_data.topo_roads`, script `ingest_bdtopo_roads.py` (ogr2ogr via container GDAL), `download_bdtopo.sh`. URLs IGN BD TOPO à compléter par le partenaire dans `scripts/bdtopo_urls.txt` (non exposées en API).
 
-**Prochain** : J5 (ML estimation DPE) — **STOP demandé**, arbitrage produit avant lancement.
+**J5 → J17 LIVRÉS** (état réel au 2026-07-08 — l'ancienne mention « Prochain : J5, STOP demandé » était périmée de ~6 semaines) :
+- **J5** ML estimation DPE : modèle Random Forest retenu (D-020/D-021), **2 705 160 lignes `ml-predicted`** en base (`public_data.dpe`) + 435 987 `ademe-real`. Doc `docs/ML_DPE.md`.
+- **J6** carbone déterministe (`backend/app/carbon/`), **J7** tuiles MVT martin, **J8** LiDAR (différé post-test — BD TOPO suffit), **J9** skills + IfcOpenShell, **J10** agents + test TTL (B-001), **J11-J13** backend Stratégie/Projet/Conformité, **J14-J17** frontend (carte, fiche, chat SSE, IFC), **Marketplace HDF** (post-J17).
+- **J19 partiel** (tunnel ngrok), **J23** pitch deck livré (`ConX_pitch_deck_*.pdf`).
+- **J21 non fait** : tests E2E Playwright jamais implémentés (cf. docs/AUDIT_2026-07-07.md).
+
+**Chantier en cours (2026-07-08)** : corrections de l'audit `docs/AUDIT_2026-07-07.md` sur branche `audit-fixes` (sécurité démo, robustesse runtime, fiabilité data/build, qualité frontend, cette doc).

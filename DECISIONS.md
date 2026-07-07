@@ -975,3 +975,48 @@ L'agent peut wrapper sa sortie complète dans un fence ` ```markdown ...
 se retrouve rendu en bloc de code monospace dans le PDF. `_strip_code_fence`
 ajouté dans `plan_export.py` ET `precalc_plans.py` (idempotent).
 
+---
+
+## D-027 — Marketplace entreprises hors-site HDF (2026-06, décision rétroactive)
+
+**Date** : 2026-06-02/03 (loguée rétroactivement le 2026-07-08 — l'implémentation
+avait précédé la décision, écart process §9.A relevé par l'audit).
+**Statut** : appliqué
+
+### Décision
+
+Ajout d'une **Marketplace** d'entreprises de construction hors-site / biosourcé
+des Hauts-de-France, reliée aux plans de rénovation IA (l'agent cite des
+fournisseurs via des liens `[Nom](marketplace:slug)`).
+
+- 3 routes frontend : `/marketplace` (annuaire), `/marketplace/commandes-groupees`
+  (mutualisation d'achats entre bâtiments), `/marketplace/:slug` (fiche entreprise).
+- Pages : `Marketplace.tsx`, `MarketplaceCompany.tsx`, `MarketplaceGroupOrders.tsx`
+  + composant `CompanyAvatar.tsx`. Données statiques : `frontend/src/data/marketplace_companies.json`.
+- ~39 liens marketplace insérés dans les plans pré-calculés.
+
+### Raison
+
+Boucler la chaîne de valeur : après le pré-cadrage IA (« quoi rénover et
+comment »), orienter vers le « avec qui » — filière hors-site régionale.
+Argument fort pour le jury (impact économique territorial concret).
+
+### Dette relevée (audit 2026-07-07)
+
+- Métadonnées de catégories dupliquées dans 4 fichiers (dedup `lib/marketplace.ts`
+  **reportée**, cf. docs/AUDIT_2026-07-07.md carried-forward).
+- Sécurité : les liens `marketplace:` du markdown IA sont désormais assainis via
+  un `urlTransform` allowlist (Lot 4a M6) — l'ancien passthrough autorisait `javascript:`.
+
+---
+
+## Chantier d'améliorations post-audit (2026-07-08)
+
+Voir `docs/AUDIT_2026-07-07.md` (rapport consolidé de 5 audits) et l'historique git
+de la branche `audit-fixes` : Lot 1 sécurité démo (LFI/SSRF PDF, bypass auth),
+Lot 2 robustesse runtime (offload async, IDOR SSE), Lot 3 fiabilité data/build
+(migrations versionnées, refresh tuiles, martin `tiles_pub`, tuning PG, CI),
+Lot 4 qualité frontend (XSS, remount, races). Les décisions structurantes de ce
+chantier (schéma `schema_migrations`, schéma `tiles_pub`, dégradation fail-open
+de la vérif ownership sur panne Supabase) sont tracées dans le rapport d'audit.
+

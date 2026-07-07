@@ -17,18 +17,27 @@ Plateforme IA pour la rénovation énergétique hors-site décarbonée — Hauts
 
 ```bash
 cp .env.example .env
-# Remplir .env avec les valeurs réelles
+# Remplir .env avec les valeurs réelles (voir .env.example pour les clés)
 
-docker compose up
+# 1. Stack Docker : postgres_local (PostGIS) + backend FastAPI + martin (tuiles)
+docker compose up -d
 # Backend : http://localhost:8000/api/health
-# Martin (tuiles MVT) : http://localhost:3000
+# Martin (tuiles MVT) : http://localhost:3010/catalog   (port hôte 3010, cf. docker-compose)
+
+# 2. Frontend (dev, séparé) : Vite sur http://localhost:5173
+cd frontend && npm install && npm run dev
+# Proxie /api → backend:8000 et /tiles → martin:3010
 ```
 
-## Vérifications J1
+Après tout changement de données sous-jacentes (ré-ingestion, recalcul scores, ML) :
+rafraîchir les tuiles matérialisées `python scripts/refresh_tiles_matviews.py`.
+
+## Scripts data (optionnel — la base est déjà peuplée en local)
 
 ```bash
 python scripts/verify_supabase_connection.py
 bash scripts/download_bdnb.sh        # tâche de fond, reprenable (git-bash sur Windows OK)
+python scripts/ingest_bdnb.py        # ingestion BDNB (idempotent : migrations suivies)
 ```
 
 ---

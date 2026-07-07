@@ -31,4 +31,7 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# CMD PROD (pas de --reload : watchers inotify + redémarrages intempestifs +
+# mono-worker en prod). Le hot-reload dev est fourni par docker-compose.yml
+# (bind mount ./backend:/app + `command: ... --reload`). Cf. AUDIT M13.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

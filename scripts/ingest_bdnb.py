@@ -45,6 +45,11 @@ SQL_MIGRATIONS_DIR = ROOT / "scripts" / "sql" / "migrations"
 
 DEFAULT_DEPTS = ["02", "59", "60", "62", "80"]
 
+# Un schéma BDNB dept complet (millésime 2025-07.a) contient 56 tables. On skip
+# le restore uniquement si le schéma est COMPLET (>= ce seuil) — sinon un restore
+# partiel (crash disque plein, COPY interrompu) serait skippé à vie. Cf. M11.
+EXPECTED_MIN_BDNB_TABLES = 50
+
 
 def get_pg_env() -> dict[str, str]:
     """Construit l'environnement PG* pour psql/pg_restore.
@@ -163,15 +168,23 @@ def restore_dump(dump: Path, dept: str, env: dict[str, str]) -> None:
         f"WHERE n.nspname='{schema}' AND c.relkind='r';"
     )
     check = psql_command(["-At", "-c", check_sql], env)
-    if (
-        check.returncode == 0
-        and check.stdout.strip().isdigit()
-        and int(check.stdout.strip()) > 0
-    ):
-        logger.info(
-            f"Schéma {schema} déjà peuplé ({check.stdout.strip()} tables) — restore skip."
-        )
+    existing = (
+        int(check.stdout.strip())
+        if check.returncode == 0 and check.stdout.strip().isdigit()
+        else 0
+    )
+    if existing >= EXPECTED_MIN_BDNB_TABLES:
+        logger.info(f"Schéma {schema} déjà complet ({existing} tables) — restore skip.")
         return
+    if existing > 0:
+        # Restore PARTIEL détecté (avant : skippé à vie car ">0 tables"). On refuse
+        # de continuer sur des données incomplètes — l'opérateur doit repartir propre.
+        raise RuntimeError(
+            f"Schéma {schema} partiel : {existing} tables (< {EXPECTED_MIN_BDNB_TABLES} "
+            f"attendues). Restore précédent incomplet. Corriger : "
+            f"`docker exec conx_postgres psql -U conx -d conx -c 'DROP SCHEMA {schema} CASCADE;'` "
+            f"puis relancer."
+        )
 
     container = os.environ.get("CONX_POSTGRES_CONTAINER", "conx_postgres")
     container_path = f"/tmp/bdnb_{dept}.sql"
@@ -221,7 +234,21 @@ def restore_dump(dump: Path, dept: str, env: dict[str, str]) -> None:
         ["docker", "exec", container, "rm", "-f", container_path], check=False
     )
 
-    logger.info(f"Restore terminé pour {schema}")
+    # Validation post-restore : ON_ERROR_STOP=0 laisse passer les warnings bénins
+    # (COMMENTS BDNB) mais aussi un COPY interrompu. On vérifie donc que le schéma
+    # est bien COMPLET, sinon on lève (pas de données partielles silencieuses). M11.
+    post = psql_command(["-At", "-c", check_sql], env)
+    n_tables = (
+        int(post.stdout.strip())
+        if post.returncode == 0 and post.stdout.strip().isdigit()
+        else 0
+    )
+    if n_tables < EXPECTED_MIN_BDNB_TABLES:
+        raise RuntimeError(
+            f"Restore {schema} INCOMPLET : {n_tables} tables (< {EXPECTED_MIN_BDNB_TABLES}). "
+            f"Vérifier l'espace disque / les logs psql ci-dessus, DROP SCHEMA puis relancer."
+        )
+    logger.info(f"Restore terminé pour {schema} ({n_tables} tables).")
 
 
 def inspect_schema(schema: str, env: dict[str, str]) -> list[tuple[str, str, int]]:
@@ -255,7 +282,9 @@ def _ensure_migrations_table(env: dict[str, str]) -> None:
     """Crée public_data.schema_migrations si absente (suivi des migrations appliquées)."""
     res = psql_command(
         [
-            "-v", "ON_ERROR_STOP=1", "-c",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
             "CREATE TABLE IF NOT EXISTS public_data.schema_migrations ("
             "version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());",
         ],
@@ -293,7 +322,9 @@ def _record_migration(name: str, env: dict[str, str]) -> None:
     """Enregistre une migration comme appliquée (nom de fichier contrôlé, pas d'input externe)."""
     psql_command(
         [
-            "-v", "ON_ERROR_STOP=1", "-c",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
             "INSERT INTO public_data.schema_migrations(version) "
             f"VALUES ('{name}') ON CONFLICT DO NOTHING;",
         ],

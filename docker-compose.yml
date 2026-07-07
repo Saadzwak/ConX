@@ -7,6 +7,21 @@ services:
     image: postgis/postgis:16-3.4
     container_name: conx_postgres
     restart: unless-stopped
+    # Tuning pour 30 Go de données PostGIS (défauts Docker : shared_buffers=128MB,
+    # work_mem=4MB → tris sur disque + risque "could not resize shared memory"
+    # sur les parallel scans). Cf. AUDIT. Ajuster à la RAM de la machine hôte
+    # (prend effet au prochain `docker compose up` — recréation du conteneur).
+    shm_size: 1g
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "effective_cache_size=4GB"
     environment:
       POSTGRES_DB: ${POSTGRES_LOCAL_DB:-conx}
       POSTGRES_USER: ${POSTGRES_LOCAL_USER:-conx}
@@ -33,6 +48,10 @@ services:
       dockerfile: Dockerfile
     container_name: conx_backend
     restart: unless-stopped
+    # Hot-reload DEV uniquement (l'image prod n'a plus --reload dans son CMD —
+    # cf. backend/Dockerfile / AUDIT M13). Le bind mount ./backend:/app ci-dessous
+    # rend le reload effectif.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     env_file:
       - .env
     environment:

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
+from ..paths import CONFIG_DIR
 from ..scoring.compute import load_thresholds, thresholds_version_hash
 
 logger = logging.getLogger("conx.routers.meta")
@@ -15,8 +16,9 @@ logger = logging.getLogger("conx.routers.meta")
 router = APIRouter(prefix="/api/meta", tags=["meta"])
 
 # Lecture unique au démarrage (relire = relancer). Modification = redéploiement.
+# Résolution robuste Docker/dev via CONFIG_DIR (cf. app/paths.py).
 _THRESHOLDS_PATH = Path(
-    os.environ.get("SCORING_THRESHOLDS_PATH", "/app/config/scoring_thresholds.yaml")
+    os.environ.get("SCORING_THRESHOLDS_PATH", str(CONFIG_DIR / "scoring_thresholds.yaml"))
 )
 _THRESHOLDS_CACHE = None
 

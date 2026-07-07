@@ -17,9 +17,11 @@ from functools import lru_cache
 from pathlib import Path
 
 from app.carbon.factors import SOURCE_REFERENCES
+from app.paths import DATA_DIR
 
-ROOT = Path(__file__).resolve().parents[3]
-FDES_PATH_DEFAULT = ROOT / "data" / "fdes_static.json"
+# Résolution robuste Docker/dev (cf. app/paths.py) — remplace un parents[3] qui
+# pointait sur `/data` en conteneur au lieu de `/app/data`.
+FDES_PATH_DEFAULT = DATA_DIR / "fdes_static.json"
 
 
 @dataclass(frozen=True)

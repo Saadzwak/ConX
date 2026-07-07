@@ -6,8 +6,6 @@ Ne charge PAS la DB ni le modèle .pkl complet (trop lourd).
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -31,9 +29,10 @@ from app.ml.train import (
     encode_features,
     spatial_split,
 )
+from app.paths import CONFIG_DIR
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-CONFIG = load_feature_config(ROOT / "config" / "zone_climatique_dpt.yaml")
+# Résolution robuste Docker/dev (cf. app/paths.py).
+CONFIG = load_feature_config(CONFIG_DIR / "zone_climatique_dpt.yaml")
 
 
 # ---------------------------------------------------------------------------

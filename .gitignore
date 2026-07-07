@@ -31,8 +31,14 @@ build/
 *.log
 
 # Data (sources & generated artifacts)
-data/
+# On ignore le contenu de data/ MAIS on versionne la base FDES statique (D-014,
+# "base statique versionnée") — sinon un checkout frais casse le module carbone
+# et 8 tests (cf. docs/AUDIT_2026-07-07.md M14). NB : `data/` (dossier ignoré)
+# empêchait git de descendre dedans, donc `!data/.gitkeep` ne marchait pas ;
+# `data/*` ignore les entrées tout en autorisant les négations ci-dessous.
+data/*
 !data/.gitkeep
+!data/fdes_static.json
 # Note : les assets démo sont désormais committés sous docs/demo_assets/
 # (cached_plans/ + ifc/) pour qu'un checkout frais ait le cache prêt sans
 # avoir à relancer Anthropic (~2 €) ni ifcopenshell. Les scripts

@@ -6,18 +6,18 @@ Vérifie : (1) formule SCORING.md respectée, (2) bornes [0,1], (3) flags qualit
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
+from app.paths import CONFIG_DIR
 from app.scoring.compute import (
     compute_components,
     load_thresholds,
     thresholds_version_hash,
 )
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-THRESHOLDS = load_thresholds(ROOT / "config" / "scoring_thresholds.yaml")
+# Résolution robuste Docker/dev (cf. app/paths.py) — remplace un
+# parent.parent.parent qui donnait `/config` en conteneur (erreur de collection).
+THRESHOLDS = load_thresholds(CONFIG_DIR / "scoring_thresholds.yaml")
 
 
 def test_thresholds_loaded():

@@ -67,8 +67,7 @@ class PlanStartRequest(BaseModel):
     initial_message: str | None = Field(
         None,
         description=(
-            "Message utilisateur initial. Si null, le backend construit un "
-            "prompt standard avec la fiche bâtiment."
+            "Message utilisateur initial. Si null, le backend construit un " "prompt standard avec la fiche bâtiment."
         ),
     )
 
@@ -118,9 +117,7 @@ class PlanHistoryResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_building_light(
-    conn: asyncpg.Connection, building_id: str
-) -> dict[str, Any]:
+async def _fetch_building_light(conn: asyncpg.Connection, building_id: str) -> dict[str, Any]:
     """Lit la fiche light du bâtiment dans `public_data` (équivalent
     /api/internal/building/:id côté backend interne)."""
     row = await conn.fetchrow(
@@ -162,12 +159,8 @@ async def _fetch_building_light(
         "monument_historique": bool(row["monument_historique"]),
         "spr": bool(row["spr"]),
         "dpe_classe": row["dpe_classe"],
-        "dpe_kwh_ep_m2_an": (
-            float(row["dpe_kwh_ep_m2_an"]) if row["dpe_kwh_ep_m2_an"] is not None else None
-        ),
-        "dpe_kg_co2_m2_an": (
-            float(row["dpe_kg_co2_m2_an"]) if row["dpe_kg_co2_m2_an"] is not None else None
-        ),
+        "dpe_kwh_ep_m2_an": (float(row["dpe_kwh_ep_m2_an"]) if row["dpe_kwh_ep_m2_an"] is not None else None),
+        "dpe_kg_co2_m2_an": (float(row["dpe_kg_co2_m2_an"]) if row["dpe_kg_co2_m2_an"] is not None else None),
         "dpe_coefficient_ep_electricite": float(row["dpe_coefficient_ep_electricite"]),
         "dpe_source": row["dpe_source"],
         "centroid_lon": float(row["centroid_lon"]),
@@ -178,14 +171,8 @@ async def _fetch_building_light(
             "s_cout": float(row["s_cout"]) if row["s_cout"] is not None else None,
             "s_social": float(row["s_social"]) if row["s_social"] is not None else None,
             "s_passoire": float(row["s_passoire"]) if row["s_passoire"] is not None else None,
-            "co2_evite_t": (
-                float(row["co2_evite_t"]) if row["co2_evite_t"] is not None else None
-            ),
-            "cout_estime_eur": (
-                float(row["cout_estime_eur"])
-                if row["cout_estime_eur"] is not None
-                else None
-            ),
+            "co2_evite_t": (float(row["co2_evite_t"]) if row["co2_evite_t"] is not None else None),
+            "cout_estime_eur": (float(row["cout_estime_eur"]) if row["cout_estime_eur"] is not None else None),
         }
         if row["s_co2"] is not None
         else None,
@@ -222,9 +209,7 @@ def _build_initial_prompt(building: dict[str, Any], req: PlanStartRequest) -> st
     return "\n".join(parts)
 
 
-async def _persist_session(
-    user: AuthUser, session_info: dict[str, Any], building_id: str, user_query: str
-) -> None:
+async def _persist_session(user: AuthUser, session_info: dict[str, Any], building_id: str, user_query: str) -> None:
     """Insert dans app.agent_sessions Supabase. No-op si Supabase non configuré
     (mode dev/test sans cloud)."""
     if not is_supabase_configured():
@@ -236,7 +221,9 @@ async def _persist_session(
     sb = supabase_for_user(user)
     # supabase-py = httpx sync → offload hors event loop (AUDIT C3).
     await asyncio.to_thread(
-        lambda: sb.schema("app").table("agent_sessions").insert(
+        lambda: sb.schema("app")
+        .table("agent_sessions")
+        .insert(
             {
                 "session_id": session_info["session_id"],
                 "agent_name": session_info["agent_name"],
@@ -244,7 +231,8 @@ async def _persist_session(
                 "user_query": user_query[:500],
                 "building_id": building_id,
             }
-        ).execute()
+        )
+        .execute()
     )
 
 
@@ -259,7 +247,8 @@ async def _next_version(user: AuthUser, session_id: str) -> int:
         return 1
     sb = supabase_for_user(user)
     res = (
-        sb.schema("app").table("renovation_plans")
+        sb.schema("app")
+        .table("renovation_plans")
         .select("version")
         .eq("session_id", session_id)
         .order("version", desc=True)
@@ -314,9 +303,7 @@ def _build_replay_prompt(previous_plan_json: dict[str, Any], new_user_message: s
     )
 
 
-async def _fetch_last_plan_context(
-    user: AuthUser, session_id: str
-) -> tuple[str | None, dict[str, Any] | None]:
+async def _fetch_last_plan_context(user: AuthUser, session_id: str) -> tuple[str | None, dict[str, Any] | None]:
     """Lit le dernier plan persisté pour cette session (la plus haute version).
 
     Retourne (building_id, plan_json) ou (None, None) si Supabase non
@@ -326,7 +313,8 @@ async def _fetch_last_plan_context(
         return None, None
     sb = supabase_for_user(user)
     res = await asyncio.to_thread(  # supabase-py sync → offload (C3)
-        lambda: sb.schema("app").table("renovation_plans")
+        lambda: sb.schema("app")
+        .table("renovation_plans")
         .select("building_id, plan_json, version")
         .eq("session_id", session_id)
         .order("version", desc=True)
@@ -373,7 +361,8 @@ async def _send_with_replay_fallback(
     # ----- Replay fallback path -----
     logger.warning(
         "Session %s status=%s → replay-previous-plan fallback engagé.",
-        session_id, status_val,
+        session_id,
+        status_val,
     )
     building_id, plan_json = await _fetch_last_plan_context(user, session_id)
     if plan_json is None:
@@ -402,7 +391,8 @@ async def _send_with_replay_fallback(
         try:
             # supabase-py sync → offload (AUDIT C3).
             await asyncio.to_thread(
-                lambda: sb.schema("app").table("agent_sessions")
+                lambda: sb.schema("app")
+                .table("agent_sessions")
                 .insert({**base_row, "previous_session_id": session_id})
                 .execute()
             )
@@ -414,11 +404,7 @@ async def _send_with_replay_fallback(
                 exc,
             )
             try:
-                await asyncio.to_thread(
-                    lambda: sb.schema("app").table("agent_sessions")
-                    .insert(base_row)
-                    .execute()
-                )
+                await asyncio.to_thread(lambda: sb.schema("app").table("agent_sessions").insert(base_row).execute())
             except Exception as exc2:
                 logger.warning("Persist agent_sessions (fallback) échoué (%s).", exc2)
 
@@ -440,7 +426,8 @@ async def _verify_session_owned(user: AuthUser, session_id: str) -> str | None:
     sb = supabase_for_user(user)
     try:
         res = await asyncio.to_thread(
-            lambda: sb.schema("app").table("agent_sessions")
+            lambda: sb.schema("app")
+            .table("agent_sessions")
             .select("session_id, agent_name")
             .eq("session_id", session_id)
             .eq("user_id", user.user_id)  # défense en profondeur (AUDIT M1)
@@ -449,9 +436,9 @@ async def _verify_session_owned(user: AuthUser, session_id: str) -> str | None:
         )
     except Exception as exc:
         logger.warning(
-            "Vérif ownership session %s indisponible (Supabase injoignable: %s) "
-            "— dégradation JWT-only.",
-            session_id, exc,
+            "Vérif ownership session %s indisponible (Supabase injoignable: %s) " "— dégradation JWT-only.",
+            session_id,
+            exc,
         )
         return None
     rows = res.data if hasattr(res, "data") else res.get("data", [])
@@ -491,7 +478,8 @@ async def start_plan(
     except Exception as exc:
         logger.warning(
             "Persistance session %s échouée (%s) — session renvoyée quand même.",
-            session_info["session_id"], exc,
+            session_info["session_id"],
+            exc,
         )
 
     return PlanStartResponse(
@@ -525,15 +513,11 @@ async def send_plan_message(
     # suffit.
     agent_name = await _verify_session_owned(user, session_id)
     if agent_name is not None and agent_name != "conx-plan":
-        raise HTTPException(
-            status_code=400, detail="Cette session n'est pas une session Plan."
-        )
+        raise HTTPException(status_code=400, detail="Cette session n'est pas une session Plan.")
 
     # _send_with_replay_fallback peut décider de basculer sur une nouvelle
     # session Anthropic si l'ancienne est `terminated` (B-001 long-idle).
-    effective_sid, was_replayed, prev_sid = await _send_with_replay_fallback(
-        user, session_id, req.content
-    )
+    effective_sid, was_replayed, prev_sid = await _send_with_replay_fallback(user, session_id, req.content)
     # Version : compter les user.message events de la session Anthropic.
     # `_next_version` interrogeait `app.renovation_plans` qui n'est jamais
     # peuplé (la persistance frontend a été différée post-J12.5) → renvoyait
@@ -602,7 +586,8 @@ async def stream_plan(
         yield serialize_event_for_sse({"type": "stream.open", "session_id": session_id})
         logger.info(
             "[SSE %s] stream.open after=%s",
-            session_id, last_id,
+            session_id,
+            last_id,
         )
 
         while True:
@@ -611,11 +596,11 @@ async def stream_plan(
             if elapsed > MAX_STREAM_DURATION_S:
                 logger.info(
                     "[SSE %s] timeout after %.1fs (%d events streamed)",
-                    session_id, elapsed, total_events,
+                    session_id,
+                    elapsed,
+                    total_events,
                 )
-                yield serialize_event_for_sse(
-                    {"type": "stream.timeout", "after_s": MAX_STREAM_DURATION_S}
-                )
+                yield serialize_event_for_sse({"type": "stream.timeout", "after_s": MAX_STREAM_DURATION_S})
                 return
 
             # Récupérer les events depuis `last_id` — on tolère des erreurs
@@ -629,7 +614,10 @@ async def stream_plan(
                 consecutive_errors += 1
                 logger.warning(
                     "[SSE %s] list_events HTTPException #%d (%d): %s",
-                    session_id, consecutive_errors, exc.status_code, exc.detail,
+                    session_id,
+                    consecutive_errors,
+                    exc.status_code,
+                    exc.detail,
                 )
                 if consecutive_errors >= 3:
                     yield serialize_event_for_sse(
@@ -650,7 +638,9 @@ async def stream_plan(
                 consecutive_errors += 1
                 logger.exception(
                     "[SSE %s] list_events Exception #%d (will retry %d more times)",
-                    session_id, consecutive_errors, max(0, 3 - consecutive_errors),
+                    session_id,
+                    consecutive_errors,
+                    max(0, 3 - consecutive_errors),
                 )
                 if consecutive_errors >= 3:
                     yield serialize_event_for_sse(
@@ -674,7 +664,9 @@ async def stream_plan(
                 except Exception as exc:
                     logger.warning(
                         "[SSE %s] event serialize failed (skipped): %s — event_type=%s",
-                        session_id, exc, e.get("type", "?"),
+                        session_id,
+                        exc,
+                        e.get("type", "?"),
                     )
                     continue
 
@@ -686,24 +678,28 @@ async def stream_plan(
                 # events.list pourra capturer la fin sans nous dire le status).
                 logger.warning(
                     "[SSE %s] retrieve_session HTTPException: %s — continuing",
-                    session_id, exc.detail,
+                    session_id,
+                    exc.detail,
                 )
                 sess = {"status": "unknown"}
             except Exception as exc:
                 logger.warning(
                     "[SSE %s] retrieve_session Exception: %s — continuing",
-                    session_id, exc,
+                    session_id,
+                    exc,
                 )
                 sess = {"status": "unknown"}
 
             if sess["status"] in ("idle", "terminated", "error"):
                 logger.info(
                     "[SSE %s] session.%s after %.1fs (%d events, %d polls)",
-                    session_id, sess["status"], elapsed, total_events, poll_iter,
+                    session_id,
+                    sess["status"],
+                    elapsed,
+                    total_events,
+                    poll_iter,
                 )
-                yield serialize_event_for_sse(
-                    {"type": f"session.{sess['status']}", "session_id": session_id}
-                )
+                yield serialize_event_for_sse({"type": f"session.{sess['status']}", "session_id": session_id})
                 return
 
             # Keepalive (toujours envoyé toutes les 15s même si pas d'event,
@@ -717,8 +713,12 @@ async def stream_plan(
             if poll_iter % 10 == 0:
                 logger.info(
                     "[SSE %s] poll #%d elapsed=%.1fs total_events=%d status=%s last_id=%s",
-                    session_id, poll_iter, elapsed, total_events,
-                    sess.get("status", "?"), last_id,
+                    session_id,
+                    poll_iter,
+                    elapsed,
+                    total_events,
+                    sess.get("status", "?"),
+                    last_id,
                 )
 
             await asyncio.sleep(POLL_INTERVAL_S)
@@ -755,18 +755,12 @@ async def persist_plan(
     `plan_json` parsé. Le backend calcule le numéro de version et insère.
     """
     if not is_supabase_configured():
-        raise HTTPException(
-            status_code=503, detail="Supabase non configuré — persistance indisponible."
-        )
+        raise HTTPException(status_code=503, detail="Supabase non configuré — persistance indisponible.")
 
     sb = supabase_for_user(user)
     # Lire le building_id depuis la session
     sess_res = (
-        sb.schema("app").table("agent_sessions")
-        .select("building_id")
-        .eq("session_id", session_id)
-        .limit(1)
-        .execute()
+        sb.schema("app").table("agent_sessions").select("building_id").eq("session_id", session_id).limit(1).execute()
     )
     sess_rows = sess_res.data if hasattr(sess_res, "data") else sess_res.get("data", [])
     if not sess_rows:
@@ -817,7 +811,8 @@ async def plan_history(
 
     sb = supabase_for_user(user)
     res = (
-        sb.schema("app").table("renovation_plans")
+        sb.schema("app")
+        .table("renovation_plans")
         .select("id,session_id,version,user_message,plan_json,carbon_t_total,carbon_breakdown,created_at")
         .eq("session_id", session_id)
         .order("version", desc=False)
@@ -850,6 +845,7 @@ class PlanExportRequest(BaseModel):
     il peut l'envoyer directement → on n'a pas besoin de re-fetch Anthropic.
     Sinon, on essaie de récupérer le plan depuis la session Anthropic + le
     cache."""
+
     plan_text: str | None = Field(
         None,
         description="Texte markdown du plan. Si absent, le backend ira le chercher.",
@@ -896,9 +892,7 @@ async def export_plan_pdf(
     if not plan_text:
         # Tentative cache local
         try:
-            cached = await get_cached_plan(
-                req.building_id or "unknown", version
-            )
+            cached = await get_cached_plan(req.building_id or "unknown", version)
             plan_text = cached.get("plan_text") if isinstance(cached, dict) else None
         except HTTPException:
             plan_text = None
@@ -968,7 +962,8 @@ async def export_plan_pdf(
                     # Si la BDNB n'a pas tout (ou schema unexpected), on continue
                     logger.warning(
                         "Enrichissement couverture échoué pour %s: %s",
-                        building_id, exc,
+                        building_id,
+                        exc,
                     )
 
     # --- 3. Rendre le PDF dans un fichier temporaire UNIQUE puis le nettoyer.
@@ -1063,5 +1058,3 @@ async def get_cached_plan(building_id: str, version: int) -> dict[str, Any]:
         return json.loads(cache_file.read_text(encoding="utf-8"))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Cache illisible : {exc}") from exc
-
-

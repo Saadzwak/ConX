@@ -38,9 +38,7 @@ async def test_replay_nominal_idle_envoie_direct(fake_user: AuthUser) -> None:
         patch("app.routers.agents.create_session") as mock_create,
         patch("app.routers.agents.is_supabase_configured", return_value=False),
     ):
-        sid, replayed, prev = await _send_with_replay_fallback(
-            fake_user, "sesn_original_42", "Et plutôt en chanvre ?"
-        )
+        sid, replayed, prev = await _send_with_replay_fallback(fake_user, "sesn_original_42", "Et plutôt en chanvre ?")
     assert sid == "sesn_original_42"
     assert replayed is False
     assert prev is None
@@ -68,15 +66,20 @@ async def test_replay_session_terminated_recreates_with_context(
 
         def select(self, *_a, **_k):
             return self
+
         def eq(self, *_a, **_k):
             return self
+
         def order(self, *_a, **_k):
             return self
+
         def limit(self, *_a, **_k):
             return self
+
         def insert(self, row):
             self._inserted.append(row)
             return self
+
         def execute(self):
             return self
 
@@ -85,6 +88,7 @@ async def test_replay_session_terminated_recreates_with_context(
     class _FakeSb:
         def schema(self, _name):
             return self
+
         def table(self, _name):
             return fake_qb
 
@@ -101,9 +105,7 @@ async def test_replay_session_terminated_recreates_with_context(
         patch("app.routers.agents.is_supabase_configured", return_value=True),
         patch("app.routers.agents.supabase_for_user", return_value=_FakeSb()),
     ):
-        sid, replayed, prev = await _send_with_replay_fallback(
-            fake_user, "sesn_expired_42", "Et plutôt en bois CLT ?"
-        )
+        sid, replayed, prev = await _send_with_replay_fallback(fake_user, "sesn_expired_42", "Et plutôt en bois CLT ?")
 
     assert replayed is True
     assert sid == "sesn_new_99"  # nouvelle session
@@ -129,19 +131,33 @@ async def test_replay_session_terminated_sans_plan_stocke(fake_user: AuthUser) -
     (le prompt contient une note explicite)."""
 
     class _FakeQuery:
-        def select(self, *_a, **_k): return self
-        def eq(self, *_a, **_k): return self
-        def order(self, *_a, **_k): return self
-        def limit(self, *_a, **_k): return self
-        def insert(self, row): return self
+        def select(self, *_a, **_k):
+            return self
+
+        def eq(self, *_a, **_k):
+            return self
+
+        def order(self, *_a, **_k):
+            return self
+
+        def limit(self, *_a, **_k):
+            return self
+
+        def insert(self, row):
+            return self
+
         def execute(self):
             class R:
-                data = []
+                data = []  # noqa: RUF012 — mock de test jetable
+
             return R()
 
     class _FakeSb:
-        def schema(self, _name): return self
-        def table(self, _name): return _FakeQuery()
+        def schema(self, _name):
+            return self
+
+        def table(self, _name):
+            return _FakeQuery()
 
     with (
         patch("app.routers.agents.retrieve_session", return_value={"status": "terminated"}),
@@ -153,9 +169,7 @@ async def test_replay_session_terminated_sans_plan_stocke(fake_user: AuthUser) -
         patch("app.routers.agents.is_supabase_configured", return_value=True),
         patch("app.routers.agents.supabase_for_user", return_value=_FakeSb()),
     ):
-        sid, replayed, prev = await _send_with_replay_fallback(
-            fake_user, "sesn_orphan", "Ajoute une isolation toiture"
-        )
+        sid, replayed, prev = await _send_with_replay_fallback(fake_user, "sesn_orphan", "Ajoute une isolation toiture")
 
     assert sid == "sesn_recovered"
     assert replayed is True
@@ -173,19 +187,33 @@ async def test_replay_retrieve_session_exception_assumed_terminated(
     """Si retrieve_session lève (ex: 404), on assume terminated → fallback."""
 
     class _FakeQuery:
-        def select(self, *_a, **_k): return self
-        def eq(self, *_a, **_k): return self
-        def order(self, *_a, **_k): return self
-        def limit(self, *_a, **_k): return self
-        def insert(self, row): return self
+        def select(self, *_a, **_k):
+            return self
+
+        def eq(self, *_a, **_k):
+            return self
+
+        def order(self, *_a, **_k):
+            return self
+
+        def limit(self, *_a, **_k):
+            return self
+
+        def insert(self, row):
+            return self
+
         def execute(self):
             class R:
-                data = []
+                data = []  # noqa: RUF012 — mock de test jetable
+
             return R()
 
     class _FakeSb:
-        def schema(self, _name): return self
-        def table(self, _name): return _FakeQuery()
+        def schema(self, _name):
+            return self
+
+        def table(self, _name):
+            return _FakeQuery()
 
     with (
         patch(
@@ -200,9 +228,7 @@ async def test_replay_retrieve_session_exception_assumed_terminated(
         patch("app.routers.agents.is_supabase_configured", return_value=True),
         patch("app.routers.agents.supabase_for_user", return_value=_FakeSb()),
     ):
-        sid, replayed, _ = await _send_with_replay_fallback(
-            fake_user, "sesn_unknown", "Continue"
-        )
+        sid, replayed, _ = await _send_with_replay_fallback(fake_user, "sesn_unknown", "Continue")
     assert replayed is True
     assert sid == "sesn_after_404"
 

@@ -57,9 +57,7 @@ def _build_export_sql(
 
     if bbox is not None:
         w, s, e, n_ = bbox
-        where.append(
-            f"b.centroid && ST_Transform(ST_MakeEnvelope(${n}, ${n + 1}, ${n + 2}, ${n + 3}, 4326), 2154)"
-        )
+        where.append(f"b.centroid && ST_Transform(ST_MakeEnvelope(${n}, ${n + 1}, ${n + 2}, ${n + 3}, 4326), 2154)")
         params.extend([w, s, e, n_])
         n += 4
     if dept:
@@ -87,9 +85,7 @@ def _build_export_sql(
         params.append(surface_min_m2)
         n += 1
 
-    geom_select = (
-        "ST_AsGeoJSON(ST_Transform(b.geom, 4326)) AS geom_geojson," if with_geom else ""
-    )
+    geom_select = "ST_AsGeoJSON(ST_Transform(b.geom, 4326)) AS geom_geojson," if with_geom else ""
 
     sql = f"""
     SELECT
@@ -118,15 +114,37 @@ def _build_export_sql(
 
 
 CSV_COLUMNS = [
-    "building_id", "rnb_id", "dept", "code_commune_insee",
-    "surface_m2", "hauteur_m", "nb_logements", "annee_constr",
-    "periode_construction", "type_principal", "materiau_mur",
-    "type_proprietaire", "monument_historique", "spr",
-    "dpe_classe", "dpe_kwh_ep_m2_an", "dpe_kg_co2_m2_an", "dpe_source",
-    "centroid_lon", "centroid_lat",
-    "s_co2", "s_faisa", "s_cout", "s_social", "s_passoire",
-    "score_total", "co2_evite_t", "cout_estime_eur", "cout_eur_par_t_co2",
-    "confidence", "thresholds_version",
+    "building_id",
+    "rnb_id",
+    "dept",
+    "code_commune_insee",
+    "surface_m2",
+    "hauteur_m",
+    "nb_logements",
+    "annee_constr",
+    "periode_construction",
+    "type_principal",
+    "materiau_mur",
+    "type_proprietaire",
+    "monument_historique",
+    "spr",
+    "dpe_classe",
+    "dpe_kwh_ep_m2_an",
+    "dpe_kg_co2_m2_an",
+    "dpe_source",
+    "centroid_lon",
+    "centroid_lat",
+    "s_co2",
+    "s_faisa",
+    "s_cout",
+    "s_social",
+    "s_passoire",
+    "score_total",
+    "co2_evite_t",
+    "cout_estime_eur",
+    "cout_eur_par_t_co2",
+    "confidence",
+    "thresholds_version",
 ]
 
 
@@ -156,8 +174,13 @@ async def export_csv(
     _ = user
     bbox_tuple = _parse_bbox(bbox)
     sql, params = _build_export_sql(
-        bbox_tuple, dept, dpe_classes, typo_proprietaire,
-        annee_max, annee_min, surface_min_m2,
+        bbox_tuple,
+        dept,
+        dpe_classes,
+        typo_proprietaire,
+        annee_max,
+        annee_min,
+        surface_min_m2,
         (w_co2, w_faisa, w_cout, w_social, w_passoire),
         with_geom=False,
     )
@@ -226,8 +249,13 @@ async def export_geojson(
     _ = user
     bbox_tuple = _parse_bbox(bbox)
     sql, params = _build_export_sql(
-        bbox_tuple, dept, dpe_classes, typo_proprietaire,
-        annee_max, annee_min, surface_min_m2,
+        bbox_tuple,
+        dept,
+        dpe_classes,
+        typo_proprietaire,
+        annee_max,
+        annee_min,
+        surface_min_m2,
         (w_co2, w_faisa, w_cout, w_social, w_passoire),
         with_geom=True,
     )
@@ -241,11 +269,7 @@ async def export_geojson(
         async with pool.acquire() as conn:
             async with conn.transaction():
                 async for r in conn.cursor(sql, *params, prefetch=500):
-                    props = {
-                        c: _json_cell(r.get(c))
-                        for c in CSV_COLUMNS
-                        if c not in ("centroid_lon", "centroid_lat")
-                    }
+                    props = {c: _json_cell(r.get(c)) for c in CSV_COLUMNS if c not in ("centroid_lon", "centroid_lat")}
                     geom_str = r.get("geom_geojson")
                     feature = {
                         "type": "Feature",

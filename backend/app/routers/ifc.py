@@ -114,7 +114,9 @@ async def _persist_validation(
     sb = supabase_for_user(user)
     # supabase-py = httpx sync → offload hors event loop (AUDIT C3).
     await asyncio.to_thread(
-        lambda: sb.schema("app").table("ifc_validations").insert(
+        lambda: sb.schema("app")
+        .table("ifc_validations")
+        .insert(
             {
                 "id": validation_id,
                 "user_id": user.user_id,
@@ -125,7 +127,8 @@ async def _persist_validation(
                 "rapport_pdf_path_local": str(pdf_path),
                 "rapport_json": rapport,
             }
-        ).execute()
+        )
+        .execute()
     )
 
 
@@ -182,9 +185,7 @@ async def upload_ifc(
                     break
                 total += len(chunk)
                 if total > MAX_IFC_SIZE_BYTES:
-                    raise HTTPException(
-                        status_code=413, detail=f"Fichier > {max_mb} Mo."
-                    )
+                    raise HTTPException(status_code=413, detail=f"Fichier > {max_mb} Mo.")
                 fh.write(chunk)
     except HTTPException:
         ifc_path.unlink(missing_ok=True)
@@ -200,7 +201,10 @@ async def upload_ifc(
 
     logger.info(
         "IFC uploadé par %s : %s → %s (%d bytes)",
-        user.user_id, file.filename, ifc_path, total,
+        user.user_id,
+        file.filename,
+        ifc_path,
+        total,
     )
 
     # 4. Valider via IfcOpenShell + règles MVP (CPU-bound C++ → offload hors
@@ -224,21 +228,26 @@ async def upload_ifc(
         raise
     except Exception as exc:
         logger.exception("Erreur génération PDF")
-        raise HTTPException(
-            status_code=500, detail=f"Erreur génération PDF : {exc}"
-        ) from exc
+        raise HTTPException(status_code=500, detail=f"Erreur génération PDF : {exc}") from exc
 
     # 6. Persister côté Supabase (best-effort : la validation + le PDF ont
     # réussi, un échec de persistance ne doit pas perdre le résultat, M4)
     try:
         await _persist_validation(
-            user, validation_id, file.filename, ifc_path,
-            rapport, pdf_path, re2020_pass, pmr_pass,
+            user,
+            validation_id,
+            file.filename,
+            ifc_path,
+            rapport,
+            pdf_path,
+            re2020_pass,
+            pmr_pass,
         )
     except Exception as exc:
         logger.warning(
             "Persistance validation %s échouée (%s) — résultat renvoyé quand même.",
-            validation_id, exc,
+            validation_id,
+            exc,
         )
 
     return UploadResponse(
@@ -276,7 +285,8 @@ async def download_pdf(
         sb = supabase_for_user(user)
         try:
             res = await asyncio.to_thread(  # supabase-py sync → offload (C3)
-                lambda: sb.schema("app").table("ifc_validations")
+                lambda: sb.schema("app")
+                .table("ifc_validations")
                 .select("rapport_pdf_path_local, ifc_filename")
                 .eq("id", validation_id)
                 .eq("user_id", user.user_id)
@@ -289,7 +299,8 @@ async def download_pdf(
             logger.warning(
                 "Ownership PDF %s indisponible (Supabase injoignable: %s) — "
                 "chemin par convention (scopé au dossier de l'utilisateur).",
-                validation_id, exc,
+                validation_id,
+                exc,
             )
             rows = None
         if rows is not None:
@@ -332,7 +343,8 @@ async def list_validations(
     sb = supabase_for_user(user)
     try:
         res = await asyncio.to_thread(  # supabase-py sync → offload (C3)
-            lambda: sb.schema("app").table("ifc_validations")
+            lambda: sb.schema("app")
+            .table("ifc_validations")
             .select("id, ifc_filename, re2020_pass, pmr_pass, created_at")
             .eq("user_id", user.user_id)  # défense en profondeur (AUDIT C2)
             .order("created_at", desc=True)

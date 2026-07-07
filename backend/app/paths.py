@@ -31,9 +31,9 @@ def _resolve_dir(env_var: str, dirname: str) -> Path:
     if override:
         return Path(override)
     candidates = [
-        _HERE.parent.parent / dirname,          # /app/<dir> (Docker)
-        _HERE.parent.parent.parent / dirname,   # <repo>/<dir> (dev local)
-        Path("/app") / dirname,                 # secours Docker
+        _HERE.parent.parent / dirname,  # /app/<dir> (Docker)
+        _HERE.parent.parent.parent / dirname,  # <repo>/<dir> (dev local)
+        Path("/app") / dirname,  # secours Docker
     ]
     for c in candidates:
         if c.is_dir():

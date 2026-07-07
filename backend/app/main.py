@@ -27,9 +27,11 @@ logging.basicConfig(
 # Évite d'exposer le schéma complet + Swagger « Try it out » quand le backend
 # passe par un tunnel public (ngrok). Cf. docs/AUDIT_2026-07-07.md.
 _env = (os.environ.get("CONX_ENV") or os.environ.get("ENV") or "").strip().lower()
-_disable_docs = _env in {"prod", "production"} or os.environ.get(
-    "CONX_DISABLE_DOCS", ""
-).strip().lower() in {"1", "true", "yes"}
+_disable_docs = _env in {"prod", "production"} or os.environ.get("CONX_DISABLE_DOCS", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 app = FastAPI(
     title="ConX API",

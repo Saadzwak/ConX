@@ -179,9 +179,7 @@ async def list_buildings(  # -- many query params, c'est l'endpoint principal
                 raise ValueError("attendu 4 valeurs")
             bbox_tuple = (parts[0], parts[1], parts[2], parts[3])
         except (ValueError, TypeError) as exc:
-            raise HTTPException(
-                status_code=400, detail=f"bbox invalide : {exc}"
-            ) from exc
+            raise HTTPException(status_code=400, detail=f"bbox invalide : {exc}") from exc
 
     params: list[Any] = [w_co2, w_faisa, w_cout, w_social, w_passoire]
     sql_filters: dict[str, str] = {
@@ -198,8 +196,7 @@ async def list_buildings(  # -- many query params, c'est l'endpoint principal
     if bbox_tuple is not None:
         w, s, e, n_ = bbox_tuple
         sql_filters["bbox_filter"] = (
-            f"AND b.centroid && ST_Transform(ST_MakeEnvelope("
-            f"${n}, ${n + 1}, ${n + 2}, ${n + 3}, 4326), 2154)"
+            f"AND b.centroid && ST_Transform(ST_MakeEnvelope(" f"${n}, ${n + 1}, ${n + 2}, ${n + 3}, 4326), 2154)"
         )
         params.extend([w, s, e, n_])
         n += 4
@@ -220,9 +217,7 @@ async def list_buildings(  # -- many query params, c'est l'endpoint principal
         n += 1
 
     if annee_max is not None and annee_min is not None:
-        sql_filters["annee_filter"] = (
-            f"AND b.annee_constr BETWEEN ${n} AND ${n + 1}"
-        )
+        sql_filters["annee_filter"] = f"AND b.annee_constr BETWEEN ${n} AND ${n + 1}"
         params.extend([annee_min, annee_max])
         n += 2
     elif annee_max is not None:
@@ -255,8 +250,7 @@ async def list_buildings(  # -- many query params, c'est l'endpoint principal
             "+ $4::float8 * bs.s_social + $5::float8 * bs.s_passoire)"
         )
         sql_filters["cursor_filter"] = (
-            f"AND ({score_expr} < ${n}"
-            f" OR ({score_expr} = ${n} AND b.building_id > ${n + 1}))"
+            f"AND ({score_expr} < ${n}" f" OR ({score_expr} = ${n} AND b.building_id > ${n + 1}))"
         )
         params.extend([cur["score"], cur["id"]])
         n += 2
@@ -284,9 +278,7 @@ async def list_buildings(  # -- many query params, c'est l'endpoint principal
             type_proprietaire=r["type_proprietaire"],
             monument_historique=bool(r["monument_historique"]),
             dpe_classe=r["dpe_classe"],
-            dpe_kwh_ep_m2_an=(
-                float(r["dpe_kwh_ep_m2_an"]) if r["dpe_kwh_ep_m2_an"] is not None else None
-            ),
+            dpe_kwh_ep_m2_an=(float(r["dpe_kwh_ep_m2_an"]) if r["dpe_kwh_ep_m2_an"] is not None else None),
             dpe_source=r["dpe_source"],
             centroid_lon=float(r["centroid_lon"]),
             centroid_lat=float(r["centroid_lat"]),
@@ -313,8 +305,11 @@ async def list_buildings(  # -- many query params, c'est l'endpoint principal
         count=len(items),
         next_cursor=next_cursor,
         weights_used=ScoringWeights(
-            w_co2=w_co2, w_faisa=w_faisa, w_cout=w_cout,
-            w_social=w_social, w_passoire=w_passoire,
+            w_co2=w_co2,
+            w_faisa=w_faisa,
+            w_cout=w_cout,
+            w_social=w_social,
+            w_passoire=w_passoire,
         ),
         bbox=bbox_tuple,
     )
@@ -568,53 +563,65 @@ def _aides_eligibles(
 
     if is_bailleur:
         montant = (nb_logements or 0) * 16_000
-        aides.append({
-            "code": "ECO_PLS",
-            "nom": "Éco-PLS rénovation",
-            "condition": "Bailleur social",
-            "montant_estimatif_eur": montant,
-            "source": "Caisse des Dépôts",
-        })
+        aides.append(
+            {
+                "code": "ECO_PLS",
+                "nom": "Éco-PLS rénovation",
+                "condition": "Bailleur social",
+                "montant_estimatif_eur": montant,
+                "source": "Caisse des Dépôts",
+            }
+        )
     if dans_qpv:
-        aides.append({
-            "code": "ANRU",
-            "nom": "Programme ANRU / Quartier Politique de la Ville",
-            "condition": f"Bâtiment en QPV{' + bailleur social' if is_bailleur else ''}",
-            "montant_estimatif_eur": None,
-            "source": "ANRU",
-        })
+        aides.append(
+            {
+                "code": "ANRU",
+                "nom": "Programme ANRU / Quartier Politique de la Ville",
+                "condition": f"Bâtiment en QPV{' + bailleur social' if is_bailleur else ''}",
+                "montant_estimatif_eur": None,
+                "source": "ANRU",
+            }
+        )
     if is_passoire:
-        aides.append({
-            "code": "CEE_BS_PASSOIRE" if is_bailleur else "CEE_PASSOIRE",
-            "nom": "CEE majorés passoires énergétiques",
-            "condition": f"DPE {dpe_classe} (passoire)",
-            "montant_estimatif_eur": (nb_logements or 0) * 2_500 if is_bailleur else None,
-            "source": "Coup de pouce CEE",
-        })
+        aides.append(
+            {
+                "code": "CEE_BS_PASSOIRE" if is_bailleur else "CEE_PASSOIRE",
+                "nom": "CEE majorés passoires énergétiques",
+                "condition": f"DPE {dpe_classe} (passoire)",
+                "montant_estimatif_eur": (nb_logements or 0) * 2_500 if is_bailleur else None,
+                "source": "Coup de pouce CEE",
+            }
+        )
     if is_copro:
-        aides.append({
-            "code": "MPR_COPRO",
-            "nom": "MaPrimeRénov' Copropriété",
-            "condition": f"Copropriété ≥ 2 logements ({nb_logements} logts)",
-            "montant_estimatif_eur": None,
-            "source": "Anah",
-        })
+        aides.append(
+            {
+                "code": "MPR_COPRO",
+                "nom": "MaPrimeRénov' Copropriété",
+                "condition": f"Copropriété ≥ 2 logements ({nb_logements} logts)",
+                "montant_estimatif_eur": None,
+                "source": "Anah",
+            }
+        )
     if reseau_chaleur_prioritaire:
-        aides.append({
-            "code": "RCU_RACCORD",
-            "nom": "Coup de pouce raccordement au réseau de chaleur",
-            "condition": "Bâtiment en périmètre de développement prioritaire",
-            "montant_estimatif_eur": None,
-            "source": "CEE coup de pouce RCU",
-        })
+        aides.append(
+            {
+                "code": "RCU_RACCORD",
+                "nom": "Coup de pouce raccordement au réseau de chaleur",
+                "condition": "Bâtiment en périmètre de développement prioritaire",
+                "montant_estimatif_eur": None,
+                "source": "CEE coup de pouce RCU",
+            }
+        )
     if dans_qpv or is_bailleur:
-        aides.append({
-            "code": "FONDS_VERT",
-            "nom": "Fonds vert (rénovation HLM / public)",
-            "condition": "Bâtiment social / patrimoine public",
-            "montant_estimatif_eur": None,
-            "source": "DDT département",
-        })
+        aides.append(
+            {
+                "code": "FONDS_VERT",
+                "nom": "Fonds vert (rénovation HLM / public)",
+                "condition": "Bâtiment social / patrimoine public",
+                "montant_estimatif_eur": None,
+                "source": "DDT département",
+            }
+        )
     return aides
 
 
@@ -635,9 +642,7 @@ def _compute_score_total(s_co2, s_faisa, s_cout, s_social, s_passoire) -> float 
     )
 
 
-async def _fetch_bdnb_enrichment(
-    conn: asyncpg.Connection, building_id: str, dept: str
-) -> dict[str, Any]:
+async def _fetch_bdnb_enrichment(conn: asyncpg.Connection, building_id: str, dept: str) -> dict[str, Any]:
     """Charge l'enrichissement BDNB depuis le schéma dpt (PHASE 2).
 
     Une seule requête multi-LEFT-JOIN pour les tables stable (1 ligne par
@@ -742,9 +747,7 @@ async def _fetch_bdnb_enrichment(
         return {}
 
 
-async def _fetch_conso_dle(
-    conn: asyncpg.Connection, building_id: str, dept: str
-) -> list[dict[str, Any]]:
+async def _fetch_conso_dle(conn: asyncpg.Connection, building_id: str, dept: str) -> list[dict[str, Any]]:
     """Récupère la série temporelle conso réelle élec+gaz (PHASE 2.7).
 
     Joint les 2 tables multimillésime par année. Sortie : un item par
@@ -827,9 +830,7 @@ async def get_building(
         score_total = _compute_score_total(s_co2, s_faisa, s_cout, s_social, s_passoire)
         co2_evite_t = float(row["co2_evite_t"])
         cout_estime_eur = float(row["cout_estime_eur"])
-        cout_eur_par_t_co2 = (
-            float(row["cout_eur_par_t_co2"]) if row["cout_eur_par_t_co2"] is not None else None
-        )
+        cout_eur_par_t_co2 = float(row["cout_eur_par_t_co2"]) if row["cout_eur_par_t_co2"] is not None else None
         confidence = float(row["confidence"])
         incomplete_data = bool(row["incomplete_data"])
         s_faisa_partial = bool(row["s_faisa_partial"])
@@ -837,10 +838,14 @@ async def get_building(
         thresholds_version = row["thresholds_version"]
         computed_at = row["computed_at"].isoformat() if row["computed_at"] else None
         score_nested = {
-            "s_co2": s_co2, "s_faisa": s_faisa, "s_cout": s_cout,
-            "s_social": s_social, "s_passoire": s_passoire,
+            "s_co2": s_co2,
+            "s_faisa": s_faisa,
+            "s_cout": s_cout,
+            "s_social": s_social,
+            "s_passoire": s_passoire,
             "score_total": score_total,
-            "co2_evite_t": co2_evite_t, "cout_estime_eur": cout_estime_eur,
+            "co2_evite_t": co2_evite_t,
+            "cout_estime_eur": cout_estime_eur,
             "cout_eur_par_t_co2": cout_eur_par_t_co2,
             "confidence": confidence,
             "dpe_source": row["score_dpe_source"],
@@ -863,9 +868,7 @@ async def get_building(
     surface_m2 = float(row["surface_m2"]) if row["surface_m2"] is not None else None
     dpe_kwh = float(row["dpe_kwh_ep_m2_an"]) if row["dpe_kwh_ep_m2_an"] is not None else None
     dpe_co2 = float(row["dpe_kg_co2_m2_an"]) if row["dpe_kg_co2_m2_an"] is not None else None
-    cout_energie_annuel = (
-        dpe_kwh * surface_m2 * TARIF_KWH_PONDERE if (dpe_kwh and surface_m2) else None
-    )
+    cout_energie_annuel = dpe_kwh * surface_m2 * TARIF_KWH_PONDERE if (dpe_kwh and surface_m2) else None
     cout_energie_30 = cout_energie_annuel * 30 if cout_energie_annuel else None
     emissions_30 = (dpe_co2 * surface_m2 * 30 / 1000) if (dpe_co2 and surface_m2) else None
 
@@ -875,36 +878,61 @@ async def get_building(
     if date_etabli:
         try:
             from datetime import datetime, timedelta
+
             d = datetime.fromisoformat(date_etabli.replace("Z", "+00:00"))
             dpe_expire_le = (d + timedelta(days=365 * 10)).date().isoformat()
-        except Exception:  # noqa: BLE001
+        except Exception:
             dpe_expire_le = None
 
     # ---- Diagnostic technique (regroupé) ----
     # Cohérence : on remonte tous les champs DPE détaillés en un sous-objet.
     diag_keys = [
         "classe_emission_ges",
-        "type_installation_chauffage", "type_energie_chauffage", "type_generateur_chauffage",
+        "type_installation_chauffage",
+        "type_energie_chauffage",
+        "type_generateur_chauffage",
         "type_generateur_chauffage_anciennete",
-        "type_installation_ecs", "type_energie_ecs", "type_generateur_ecs",
+        "type_installation_ecs",
+        "type_energie_ecs",
+        "type_generateur_ecs",
         "type_generateur_ecs_anciennete",
         "type_ventilation",
-        "type_vitrage", "type_materiaux_menuiserie", "vitrage_vir", "uw",
-        "type_isolation_mur_exterieur", "materiaux_structure_mur_exterieur",
-        "epaisseur_structure_mur_exterieur", "u_mur_exterieur",
-        "type_isolation_plancher_bas", "u_plancher_bas_final_deperditif",
-        "type_isolation_plancher_haut", "u_plancher_haut_deperditif",
+        "type_vitrage",
+        "type_materiaux_menuiserie",
+        "vitrage_vir",
+        "uw",
+        "type_isolation_mur_exterieur",
+        "materiaux_structure_mur_exterieur",
+        "epaisseur_structure_mur_exterieur",
+        "u_mur_exterieur",
+        "type_isolation_plancher_bas",
+        "u_plancher_bas_final_deperditif",
+        "type_isolation_plancher_haut",
+        "u_plancher_haut_deperditif",
         "type_adjacence_principal_plancher_haut",
-        "u_porte", "surface_porte",
-        "deperdition_mur", "deperdition_plancher_haut", "deperdition_plancher_bas",
-        "deperdition_baie_vitree", "deperdition_porte",
+        "u_porte",
+        "surface_porte",
+        "deperdition_mur",
+        "deperdition_plancher_haut",
+        "deperdition_plancher_bas",
+        "deperdition_baie_vitree",
+        "deperdition_porte",
     ]
     diag = {k: bdnb_raw.get(k) for k in diag_keys}
     # Cast numerics
-    for k in ("uw", "u_mur_exterieur", "u_plancher_bas_final_deperditif",
-              "u_plancher_haut_deperditif", "u_porte", "surface_porte",
-              "deperdition_mur", "deperdition_plancher_haut", "deperdition_plancher_bas",
-              "deperdition_baie_vitree", "deperdition_porte"):
+    for k in (
+        "uw",
+        "u_mur_exterieur",
+        "u_plancher_bas_final_deperditif",
+        "u_plancher_haut_deperditif",
+        "u_porte",
+        "surface_porte",
+        "deperdition_mur",
+        "deperdition_plancher_haut",
+        "deperdition_plancher_bas",
+        "deperdition_baie_vitree",
+        "deperdition_porte",
+    ):
         if diag.get(k) is not None:
             try:
                 diag[k] = float(diag[k])
@@ -916,10 +944,7 @@ async def get_building(
     rpls_open = bdnb_raw.get("rpls_open")
     rpls_dict: dict[str, Any] | None = None
     if rpls_open:
-        dist = {
-            cls: bdnb_raw.get(f"nb_classe_ener_{cls.lower()}")
-            for cls in ["A", "B", "C", "D", "E", "F", "G"]
-        }
+        dist = {cls: bdnb_raw.get(f"nb_classe_ener_{cls.lower()}") for cls in ["A", "B", "C", "D", "E", "F", "G"]}
         # Cast int
         dist = {k: int(v) if v is not None else 0 for k, v in dist.items()}
         rpls_dict = {
@@ -928,7 +953,9 @@ async def get_building(
             "classe_ges_principale": bdnb_raw.get("rpls_classe_ges"),
             "accessible_pmr": bdnb_raw.get("rpls_accessible_pmr"),
             "dans_qpv": bool(bdnb_raw.get("rpls_dans_qpv")),
-            "shab_total_m2": float(bdnb_raw["rpls_shab_total"]) if bdnb_raw.get("rpls_shab_total") is not None else None,
+            "shab_total_m2": float(bdnb_raw["rpls_shab_total"])
+            if bdnb_raw.get("rpls_shab_total") is not None
+            else None,
             "distribution_dpe": dist,
         }
 
@@ -980,12 +1007,8 @@ async def get_building(
     if row["acces_chantier"] is not None:
         acces_chantier_dict = {
             "score": float(row["acces_chantier"]),
-            "nearest_largeur_m": (
-                float(row["nearest_largeur_m"]) if row["nearest_largeur_m"] is not None else None
-            ),
-            "nearest_distance_m": (
-                float(row["nearest_distance_m"]) if row["nearest_distance_m"] is not None else None
-            ),
+            "nearest_largeur_m": (float(row["nearest_largeur_m"]) if row["nearest_largeur_m"] is not None else None),
+            "nearest_distance_m": (float(row["nearest_distance_m"]) if row["nearest_distance_m"] is not None else None),
         }
 
     return BuildingDetail(
@@ -1029,13 +1052,20 @@ async def get_building(
         centroid_lon=float(row["centroid_lon"]),
         centroid_lat=float(row["centroid_lat"]),
         score_total=score_total,
-        s_co2=s_co2, s_faisa=s_faisa, s_cout=s_cout, s_social=s_social, s_passoire=s_passoire,
-        co2_evite_t=co2_evite_t, cout_estime_eur=cout_estime_eur,
+        s_co2=s_co2,
+        s_faisa=s_faisa,
+        s_cout=s_cout,
+        s_social=s_social,
+        s_passoire=s_passoire,
+        co2_evite_t=co2_evite_t,
+        cout_estime_eur=cout_estime_eur,
         cout_eur_par_t_co2=cout_eur_par_t_co2,
         confidence=confidence,
-        incomplete_data=incomplete_data, s_faisa_partial=s_faisa_partial,
+        incomplete_data=incomplete_data,
+        s_faisa_partial=s_faisa_partial,
         missing_fields=missing_fields,
-        thresholds_version=thresholds_version, computed_at=computed_at,
+        thresholds_version=thresholds_version,
+        computed_at=computed_at,
         score=score_nested,
         neighbors=neighbors,
         dans_qpv=dans_qpv,
@@ -1077,8 +1107,8 @@ class BuildingRank(BaseModel):
 # SQL_RANK : décision pragmatique pour la perf —
 # - IRIS (~qq centaines de bât) : très rapide (~30 ms)
 # - Commune (Lille ~80k bât) : on matérialise UNE FOIS le CTE puis on
-#   recompte 2× dessus (rang + total). Évite 2 scans complets ≈ 3 s.
-# - Dept : abandonné côté API. Le scan dept 59 = 600k × formule = 5+s,
+#   recompte 2x dessus (rang + total). Évite 2 scans complets ~3 s.
+# - Dept : abandonné côté API. Le scan dept 59 = 600k x formule = 5+s,
 #   pas justifié pour la valeur UX d'un "rang département". Le frontend
 #   affichera juste les rangs IRIS + commune.
 #
@@ -1151,5 +1181,3 @@ async def get_building_rank(
         rank_dept=None,
         total_dept=None,
     )
-
-

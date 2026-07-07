@@ -80,7 +80,7 @@ def test_serialize_event_for_sse_format() -> None:
     text = raw.decode("utf-8")
     assert text.startswith("data: ")
     assert text.endswith("\n\n")
-    payload = json.loads(text[len("data: "):-2])
+    payload = json.loads(text[len("data: ") : -2])
     assert payload["type"] == "agent_message"
     assert payload["id"] == "evt_1"
 

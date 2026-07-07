@@ -63,9 +63,7 @@ async def _init_connection(conn: asyncpg.Connection) -> None:
 async def get_pool() -> asyncpg.Pool:
     """Retourne le pool global. Lève si non initialisé (lifespan absent)."""
     if _pool is None:
-        raise RuntimeError(
-            "Pool asyncpg non initialisé — vérifier que le lifespan FastAPI tourne."
-        )
+        raise RuntimeError("Pool asyncpg non initialisé — vérifier que le lifespan FastAPI tourne.")
     return _pool
 
 
@@ -95,8 +93,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Préférer dsn_from_env si l'URL contient un placeholder évident.
     if dsn_from_url and "changeme" in dsn_from_url and dsn_from_env:
         logger.warning(
-            "DATABASE_URL_LOCAL contient 'changeme' — utilisation des "
-            "variables POSTGRES_LOCAL_* à la place."
+            "DATABASE_URL_LOCAL contient 'changeme' — utilisation des " "variables POSTGRES_LOCAL_* à la place."
         )
         dsn = dsn_from_env
     else:

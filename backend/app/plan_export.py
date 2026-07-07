@@ -8,6 +8,7 @@ contient toute la mise en page (couverture, en-tête de page, palette ConX).
 
 Idempotent : aucun side-effect autre que la création du PDF de sortie.
 """
+
 from __future__ import annotations
 
 import logging
@@ -95,9 +96,7 @@ def _markdown_to_html(markdown_text: str) -> str:
     try:
         from markdown_it import MarkdownIt  # type: ignore
 
-        md = MarkdownIt("commonmark", {"breaks": True, "html": False}).enable(
-            ["table", "strikethrough"]
-        )
+        md = MarkdownIt("commonmark", {"breaks": True, "html": False}).enable(["table", "strikethrough"])
         return md.render(markdown_text)
     except ImportError:
         pass
@@ -187,9 +186,7 @@ def _fallback_markdown_to_html(text: str) -> str:
             while i < n and lines[i].lstrip().startswith(">"):
                 quote_lines.append(lines[i].lstrip()[1:].lstrip())
                 i += 1
-            out.append(
-                "<blockquote>" + _inline("<br/>".join(quote_lines)) + "</blockquote>"
-            )
+            out.append("<blockquote>" + _inline("<br/>".join(quote_lines)) + "</blockquote>")
             continue
 
         # Tableau pipe (détection : ligne avec >=2 pipes ET ligne suivante de
@@ -203,9 +200,7 @@ def _fallback_markdown_to_html(text: str) -> str:
                 rows: list[list[str]] = []
                 j = i + 2
                 while j < n and "|" in lines[j].strip():
-                    rows.append(
-                        [c.strip() for c in lines[j].strip().strip("|").split("|")]
-                    )
+                    rows.append([c.strip() for c in lines[j].strip().strip("|").split("|")])
                     j += 1
                 # Render
                 tbl = ["<table><thead><tr>"]
@@ -291,7 +286,7 @@ def _strip_top_h2(markdown_text: str) -> tuple[str, str]:
     if not m:
         return ("Pré-cadrage rénovation", markdown_text)
     title = m.group(1)
-    rest = markdown_text[m.end():].lstrip("\n")
+    rest = markdown_text[m.end() :].lstrip("\n")
     return (title, rest)
 
 
@@ -363,6 +358,9 @@ def render_plan_pdf(
     render_html_to_pdf(html_str, output_path)
     logger.info(
         "PDF plan généré : %s (%d bytes, building=%s, v%d)",
-        output_path, output_path.stat().st_size, building_id, version,
+        output_path,
+        output_path.stat().st_size,
+        building_id,
+        version,
     )
     return output_path

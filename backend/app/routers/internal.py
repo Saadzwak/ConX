@@ -46,9 +46,7 @@ class ScoreRequest(BaseModel):
     """Périmètre passé par l'agent Sélection. Tout est optionnel — au moins
     un filtre doit être fourni pour éviter de scanner 3 M lignes."""
 
-    bbox: tuple[float, float, float, float] | None = Field(
-        None, description="WGS84 [W,S,E,N]"
-    )
+    bbox: tuple[float, float, float, float] | None = Field(None, description="WGS84 [W,S,E,N]")
     dept: list[str] | None = None
     code_commune_insee: list[str] | None = None
     dpe_classes: list[str] | None = None
@@ -142,9 +140,7 @@ async def score_buildings(
 
     if req.bbox is not None:
         w, s, e, n_ = req.bbox
-        where.append(
-            f"b.centroid && ST_Transform(ST_MakeEnvelope(${n}, ${n + 1}, ${n + 2}, ${n + 3}, 4326), 2154)"
-        )
+        where.append(f"b.centroid && ST_Transform(ST_MakeEnvelope(${n}, ${n + 1}, ${n + 2}, ${n + 3}, 4326), 2154)")
         params.extend([w, s, e, n_])
         n += 4
     if req.dept:
@@ -230,11 +226,7 @@ async def score_buildings(
             s_passoire=float(r["s_passoire"]),
             co2_evite_t=float(r["co2_evite_t"]),
             cout_estime_eur=float(r["cout_estime_eur"]),
-            cout_eur_par_t_co2=(
-                float(r["cout_eur_par_t_co2"])
-                if r["cout_eur_par_t_co2"] is not None
-                else None
-            ),
+            cout_eur_par_t_co2=(float(r["cout_eur_par_t_co2"]) if r["cout_eur_par_t_co2"] is not None else None),
             confidence=float(r["confidence"]),
         )
         for r in rows
@@ -323,11 +315,7 @@ async def get_building_light(
             "s_passoire": float(row["s_passoire"]),
             "co2_evite_t": float(row["co2_evite_t"]),
             "cout_estime_eur": float(row["cout_estime_eur"]),
-            "cout_eur_par_t_co2": (
-                float(row["cout_eur_par_t_co2"])
-                if row["cout_eur_par_t_co2"] is not None
-                else None
-            ),
+            "cout_eur_par_t_co2": (float(row["cout_eur_par_t_co2"]) if row["cout_eur_par_t_co2"] is not None else None),
             "confidence": float(row["confidence"]),
             "thresholds_version": row["thresholds_version"],
         }
@@ -348,12 +336,8 @@ async def get_building_light(
         monument_historique=bool(row["monument_historique"]),
         spr=bool(row["spr"]),
         dpe_classe=row["dpe_classe"],
-        dpe_kwh_ep_m2_an=(
-            float(row["dpe_kwh_ep_m2_an"]) if row["dpe_kwh_ep_m2_an"] is not None else None
-        ),
-        dpe_kg_co2_m2_an=(
-            float(row["dpe_kg_co2_m2_an"]) if row["dpe_kg_co2_m2_an"] is not None else None
-        ),
+        dpe_kwh_ep_m2_an=(float(row["dpe_kwh_ep_m2_an"]) if row["dpe_kwh_ep_m2_an"] is not None else None),
+        dpe_kg_co2_m2_an=(float(row["dpe_kg_co2_m2_an"]) if row["dpe_kg_co2_m2_an"] is not None else None),
         dpe_coefficient_ep_electricite=float(row["dpe_coefficient_ep_electricite"]),
         dpe_source=row["dpe_source"],
         score=score,

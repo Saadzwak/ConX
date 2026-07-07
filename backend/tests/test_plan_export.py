@@ -7,6 +7,7 @@ Couvre :
 - erreur 422 sur markdown vide
 - erreur 503 si weasyprint absent (skip si présent)
 """
+
 from __future__ import annotations
 
 import pytest
@@ -21,7 +22,6 @@ from app.plan_export import (
     _strip_top_h2,
     render_plan_pdf,
 )
-
 
 SAMPLE_PLAN = """## Pré-cadrage v1 — Pavillon F → C
 *Bâtiment 124 m² | brique | 1965*

@@ -29,9 +29,14 @@ def _set_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("INTERNAL_SHARED_TOKEN", "internal-token-xyz")
 
 
-def _make_jwt(*, sub: str = "user-uuid-1", role: str | None = "architecte",
-              email: str = "a@b.fr", expired: bool = False,
-              aud: str = "authenticated") -> str:
+def _make_jwt(
+    *,
+    sub: str = "user-uuid-1",
+    role: str | None = "architecte",
+    email: str = "a@b.fr",
+    expired: bool = False,
+    aud: str = "authenticated",
+) -> str:
     now = int(time.time())
     payload: dict = {
         "sub": sub,

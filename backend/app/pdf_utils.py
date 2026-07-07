@@ -39,9 +39,7 @@ def secure_url_fetcher(url: str):
         "Rendu PDF : récupération d'URL externe refusée (anti LFI/SSRF) : %.80s",
         url,
     )
-    raise ValueError(
-        f"URL externe interdite dans le rendu PDF ConX : {url[:80]!r}"
-    )
+    raise ValueError(f"URL externe interdite dans le rendu PDF ConX : {url[:80]!r}")
 
 
 def render_html_to_pdf(html_str: str, output_path: Path) -> Path:
@@ -54,7 +52,5 @@ def render_html_to_pdf(html_str: str, output_path: Path) -> Path:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     # base_url=None : aucune résolution d'URL relative implicite.
-    HTML(string=html_str, url_fetcher=secure_url_fetcher, base_url=None).write_pdf(
-        str(output_path)
-    )
+    HTML(string=html_str, url_fetcher=secure_url_fetcher, base_url=None).write_pdf(str(output_path))
     return output_path

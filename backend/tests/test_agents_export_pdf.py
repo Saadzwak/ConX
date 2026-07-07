@@ -11,6 +11,7 @@ On vérifie le câblage de la route :
 weasyprint n'est pas dispo en venv local → on monkeypatch `render_plan_pdf`
 pour valider la chaîne FastAPI sans rendu PDF réel.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -75,6 +76,7 @@ def test_export_pdf_requires_auth(monkeypatch):
     """
     monkeypatch.delenv("CONX_DEV_BYPASS_AUTH", raising=False)
     from app.main import app
+
     client = TestClient(app)
     # Pas de header Authorization
     r = client.post(

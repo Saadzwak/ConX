@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("conx.agents")
 
+
 def _resolve_agents_dir() -> Path:
     """Trouve le répertoire `agents/` quel que soit le layout (dev local ou
     container Docker où `/app/agents` est monté en read-only)."""
@@ -80,8 +81,7 @@ def _load_agent_ids() -> dict[str, str]:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
-                "agents.lock.yaml absent — le partenaire doit lancer "
-                "`python agents/sync.py` après validation §9.D."
+                "agents.lock.yaml absent — le partenaire doit lancer " "`python agents/sync.py` après validation §9.D."
             ),
         )
     lock = yaml.safe_load(LOCK_YAML.read_text(encoding="utf-8")) or {}
@@ -181,7 +181,10 @@ def create_session(agent_name: str, title: str | None = None) -> dict[str, Any]:
     agent_id = get_agent_id(agent_name)
     env_id = get_environment_id(agent_name)
     logger.info(
-        "Création session sur agent %s (id=%s) + env %s...", agent_name, agent_id, env_id,
+        "Création session sur agent %s (id=%s) + env %s...",
+        agent_name,
+        agent_id,
+        env_id,
     )
     session = client.beta.sessions.create(
         agent=agent_id,
@@ -261,7 +264,8 @@ def list_events(session_id: str, after: str | None = None) -> list[dict[str, Any
         if scanned > _MAX_EVENTS_SCAN:
             logger.warning(
                 "list_events %s : cap %d events atteint, troncature.",
-                session_id, _MAX_EVENTS_SCAN,
+                session_id,
+                _MAX_EVENTS_SCAN,
             )
             break
         if not seen_after:
@@ -278,10 +282,7 @@ def _event_to_dict(e: Any) -> dict[str, Any]:
     L'API beta utilise `processed_at` (pas `created_at`). On expose les deux
     pour rester compatible côté frontend.
     """
-    ts = (
-        getattr(e, "processed_at", None)
-        or getattr(e, "created_at", None)
-    )
+    ts = getattr(e, "processed_at", None) or getattr(e, "created_at", None)
     return {
         "id": getattr(e, "id", None),
         "type": getattr(e, "type", None),

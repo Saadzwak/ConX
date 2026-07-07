@@ -148,12 +148,7 @@ def is_supabase_configured() -> bool:
     """Retourne True si SUPABASE_URL + SUPABASE_ANON_KEY sont des vraies valeurs."""
     url = os.environ.get("SUPABASE_URL", "").strip()
     key = os.environ.get("SUPABASE_ANON_KEY", "").strip()
-    return bool(
-        url
-        and not url.startswith("https://YOUR_")
-        and key
-        and not key.startswith("eyJ...")
-    )
+    return bool(url and not url.startswith("https://YOUR_") and key and not key.startswith("eyJ..."))
 
 
 def _empty_response() -> dict[str, Any]:

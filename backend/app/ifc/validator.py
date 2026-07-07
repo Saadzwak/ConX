@@ -23,8 +23,8 @@ logger = logging.getLogger("conx.ifc.validator")
 # racine projet (4 niveaux au-dessus de ce fichier).
 _HERE = Path(__file__).resolve().parent
 SKILL_DIR_CANDIDATES = [
-    _HERE.parent.parent / "skills" / "ifc-check",                       # /app/skills (container)
-    _HERE.parent.parent.parent / "skills" / "ifc-check",                # racine projet (dev local)
+    _HERE.parent.parent / "skills" / "ifc-check",  # /app/skills (container)
+    _HERE.parent.parent.parent / "skills" / "ifc-check",  # racine projet (dev local)
 ]
 SKILL_DIR = next((p for p in SKILL_DIR_CANDIDATES if p.exists()), SKILL_DIR_CANDIDATES[0])
 
@@ -47,8 +47,7 @@ def _load_validator() -> Any:
     except ImportError as exc:
         logger.exception("Erreur import ifc_validator")
         raise ImportError(
-            f"ifc_validator non importable : {exc}. "
-            "Vérifier que ifcopenshell est installé dans le backend."
+            f"ifc_validator non importable : {exc}. " "Vérifier que ifcopenshell est installé dans le backend."
         ) from exc
     _validate_fn = validate
     return _validate_fn

@@ -32,9 +32,7 @@ def test_check_labels_complete() -> None:
 
 
 def test_templates_dir_exists() -> None:
-    assert ifc_pdf.TEMPLATES_DIR.exists(), (
-        f"Dossier templates introuvable : {ifc_pdf.TEMPLATES_DIR}"
-    )
+    assert ifc_pdf.TEMPLATES_DIR.exists(), f"Dossier templates introuvable : {ifc_pdf.TEMPLATES_DIR}"
     assert (ifc_pdf.TEMPLATES_DIR / ifc_pdf.TEMPLATE_NAME).exists()
 
 

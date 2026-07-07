@@ -228,9 +228,7 @@ def require_role(*allowed: str):
     """
     allowed_set = set(allowed)
     if not allowed_set.issubset(ALLOWED_ROLES):
-        raise ValueError(
-            f"Rôles inconnus passés à require_role: {allowed_set - ALLOWED_ROLES}"
-        )
+        raise ValueError(f"Rôles inconnus passés à require_role: {allowed_set - ALLOWED_ROLES}")
 
     async def _check(user: Annotated[AuthUser, Depends(get_current_user)]) -> AuthUser:
         if user.role not in allowed_set:

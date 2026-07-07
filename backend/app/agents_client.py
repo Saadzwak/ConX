@@ -122,9 +122,14 @@ def _get_anthropic_client() -> Anthropic:
             detail=f"Module anthropic non installé : {exc}",
         ) from exc
 
+    # timeout explicite : le défaut SDK (10 min) gèlerait l'event loop en cas
+    # d'API lente. Aucun de nos appels (create/send/list/retrieve) n'attend la
+    # génération du modèle (polling via list_events), 30 s suffit largement.
+    # Cf. docs/AUDIT_2026-07-07.md C3.
     return anthropic.Anthropic(
         api_key=api_key,
         default_headers={"anthropic-beta": BETA_HEADER},
+        timeout=float(os.environ.get("ANTHROPIC_HTTP_TIMEOUT", "30")),
     )
 
 
@@ -227,14 +232,20 @@ def retrieve_session(session_id: str) -> dict[str, Any]:
     }
 
 
+# Garde-fou mémoire : nombre max d'events traversés en un poll (session
+# pathologique). Une session ConX normale en compte < 50.
+_MAX_EVENTS_SCAN = 5000
+
+
 def list_events(session_id: str, after: str | None = None) -> list[dict[str, Any]]:
     """Liste les events de la session après un event_id donné.
 
-    Le SDK Anthropic `beta.sessions.events.list` n'accepte PAS `after=<event_id>`
-    (cf. signature : il propose `created_at_gt`, `page`, `order`). On fetch
-    donc l'intégralité de la session (limit=200, order=asc) puis on filtre
-    côté Python : tout ce qui suit chronologiquement l'event `after`. Coût
-    acceptable pour la démo (sessions courtes, polling 1.5 s).
+    Le SDK Anthropic `beta.sessions.events.list` n'accepte pas `after=<event_id>`
+    mais renvoie un `SyncPageCursor` **auto-paginé** : on itère l'objet page
+    directement (et non `.data`, qui ne contenait que la 1ʳᵉ page de 200 —
+    au-delà, les nouveaux events n'étaient jamais vus, cf. AUDIT M3). On filtre
+    ensuite côté Python tout ce qui suit chronologiquement l'event `after`.
+    Un cap `_MAX_EVENTS_SCAN` borne la mémoire pour les sessions pathologiques.
     """
     client = _get_anthropic_client()
     events_iter = client.beta.sessions.events.list(
@@ -244,7 +255,15 @@ def list_events(session_id: str, after: str | None = None) -> list[dict[str, Any
     )
     seen_after = after is None
     out: list[dict[str, Any]] = []
-    for e in getattr(events_iter, "data", events_iter):
+    scanned = 0
+    for e in events_iter:  # auto-pagination SDK : traverse toutes les pages
+        scanned += 1
+        if scanned > _MAX_EVENTS_SCAN:
+            logger.warning(
+                "list_events %s : cap %d events atteint, troncature.",
+                session_id, _MAX_EVENTS_SCAN,
+            )
+            break
         if not seen_after:
             if getattr(e, "id", None) == after:
                 seen_after = True

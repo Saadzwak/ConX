@@ -20,6 +20,7 @@ géométrique 3D, IFC2x3/IFC4/IFC4.3 supportés.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import uuid
@@ -92,7 +93,7 @@ def _summarize_pass(checks: dict[str, Any]) -> bool | None:
     return all(bool(v.get("pass")) for v in checks.values() if isinstance(v, dict))
 
 
-def _persist_validation(
+async def _persist_validation(
     user: AuthUser,
     validation_id: str,
     ifc_filename: str,
@@ -111,18 +112,21 @@ def _persist_validation(
         )
         return
     sb = supabase_for_user(user)
-    sb.schema("app").table("ifc_validations").insert(
-        {
-            "id": validation_id,
-            "user_id": user.user_id,
-            "ifc_filename": ifc_filename,
-            "ifc_path_local": str(ifc_path),
-            "re2020_pass": re2020_pass,
-            "pmr_pass": pmr_pass,
-            "rapport_pdf_path_local": str(pdf_path),
-            "rapport_json": rapport,
-        }
-    ).execute()
+    # supabase-py = httpx sync → offload hors event loop (AUDIT C3).
+    await asyncio.to_thread(
+        lambda: sb.schema("app").table("ifc_validations").insert(
+            {
+                "id": validation_id,
+                "user_id": user.user_id,
+                "ifc_filename": ifc_filename,
+                "ifc_path_local": str(ifc_path),
+                "re2020_pass": re2020_pass,
+                "pmr_pass": pmr_pass,
+                "rapport_pdf_path_local": str(pdf_path),
+                "rapport_json": rapport,
+            }
+        ).execute()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -199,9 +203,10 @@ async def upload_ifc(
         user.user_id, file.filename, ifc_path, total,
     )
 
-    # 4. Valider via IfcOpenShell + règles MVP
+    # 4. Valider via IfcOpenShell + règles MVP (CPU-bound C++ → offload hors
+    # event loop pour ne pas geler le stream SSE et les autres requêtes, C3).
     try:
-        rapport = validate_ifc(ifc_path)
+        rapport = await asyncio.to_thread(validate_ifc, ifc_path)
     except ImportError as exc:
         # ifcopenshell pas dispo dans le container — fallback graceful
         raise HTTPException(
@@ -212,9 +217,9 @@ async def upload_ifc(
     re2020_pass = _summarize_pass(rapport.get("re2020_checks") or {})
     pmr_pass = _summarize_pass(rapport.get("pmr_checks") or {})
 
-    # 5. Générer le PDF
+    # 5. Générer le PDF (WeasyPrint CPU-bound → offload, C3)
     try:
-        render_pdf(rapport, pdf_path)
+        await asyncio.to_thread(render_pdf, rapport, pdf_path)
     except HTTPException:
         raise
     except Exception as exc:
@@ -223,11 +228,18 @@ async def upload_ifc(
             status_code=500, detail=f"Erreur génération PDF : {exc}"
         ) from exc
 
-    # 6. Persister côté Supabase (no-op si pas configuré)
-    _persist_validation(
-        user, validation_id, file.filename, ifc_path,
-        rapport, pdf_path, re2020_pass, pmr_pass,
-    )
+    # 6. Persister côté Supabase (best-effort : la validation + le PDF ont
+    # réussi, un échec de persistance ne doit pas perdre le résultat, M4)
+    try:
+        await _persist_validation(
+            user, validation_id, file.filename, ifc_path,
+            rapport, pdf_path, re2020_pass, pmr_pass,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Persistance validation %s échouée (%s) — résultat renvoyé quand même.",
+            validation_id, exc,
+        )
 
     return UploadResponse(
         validation_id=validation_id,
@@ -259,24 +271,39 @@ async def download_pdf(
 
     # Ownership via RLS Supabase + filtre user_id explicite (défense en profondeur :
     # tient même si la RLS est bypassée par service_role). Cf. AUDIT C2.
+    row: dict[str, Any] | None = None
     if is_supabase_configured():
         sb = supabase_for_user(user)
-        res = (
-            sb.schema("app").table("ifc_validations")
-            .select("rapport_pdf_path_local, ifc_filename")
-            .eq("id", validation_id)
-            .eq("user_id", user.user_id)
-            .limit(1)
-            .execute()
-        )
-        rows = res.data if hasattr(res, "data") else res.get("data", [])
-        if not rows:
-            raise HTTPException(status_code=404, detail="Validation introuvable.")
-        pdf_path = Path(rows[0]["rapport_pdf_path_local"])
-        ifc_filename = rows[0]["ifc_filename"]
+        try:
+            res = await asyncio.to_thread(  # supabase-py sync → offload (C3)
+                lambda: sb.schema("app").table("ifc_validations")
+                .select("rapport_pdf_path_local, ifc_filename")
+                .eq("id", validation_id)
+                .eq("user_id", user.user_id)
+                .limit(1)
+                .execute()
+            )
+            rows = res.data if hasattr(res, "data") else res.get("data", [])
+        except Exception as exc:
+            # Supabase injoignable → dégradation vers chemin par convention.
+            logger.warning(
+                "Ownership PDF %s indisponible (Supabase injoignable: %s) — "
+                "chemin par convention (scopé au dossier de l'utilisateur).",
+                validation_id, exc,
+            )
+            rows = None
+        if rows is not None:
+            if not rows:
+                raise HTTPException(status_code=404, detail="Validation introuvable.")
+            row = rows[0]
+
+    if row is not None:
+        pdf_path = Path(row["rapport_pdf_path_local"])
+        ifc_filename = row["ifc_filename"]
     else:
-        # Mode dégradé : on infère le chemin par convention. Sécurité réduite,
-        # acceptable en dev local uniquement.
+        # Non configuré ou injoignable : chemin par convention. Scopé au dossier
+        # de l'utilisateur (user_id issu de l'auth + validation_id validé UUID),
+        # donc pas d'accès cross-utilisateur.
         pdf_path = PDF_DIR / user.user_id / f"{validation_id}.pdf"
         ifc_filename = f"{validation_id}.ifc"
 
@@ -303,14 +330,18 @@ async def list_validations(
     if not is_supabase_configured():
         return []
     sb = supabase_for_user(user)
-    res = (
-        sb.schema("app").table("ifc_validations")
-        .select("id, ifc_filename, re2020_pass, pmr_pass, created_at")
-        .eq("user_id", user.user_id)  # défense en profondeur (AUDIT C2)
-        .order("created_at", desc=True)
-        .limit(50)
-        .execute()
-    )
+    try:
+        res = await asyncio.to_thread(  # supabase-py sync → offload (C3)
+            lambda: sb.schema("app").table("ifc_validations")
+            .select("id, ifc_filename, re2020_pass, pmr_pass, created_at")
+            .eq("user_id", user.user_id)  # défense en profondeur (AUDIT C2)
+            .order("created_at", desc=True)
+            .limit(50)
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("Liste validations indisponible (Supabase injoignable: %s).", exc)
+        return []
     rows = res.data if hasattr(res, "data") else res.get("data", [])
     out: list[ValidationListItem] = []
     for r in rows:

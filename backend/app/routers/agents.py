@@ -234,15 +234,18 @@ async def _persist_session(
         )
         return
     sb = supabase_for_user(user)
-    sb.schema("app").table("agent_sessions").insert(
-        {
-            "session_id": session_info["session_id"],
-            "agent_name": session_info["agent_name"],
-            "user_id": user.user_id,
-            "user_query": user_query[:500],
-            "building_id": building_id,
-        }
-    ).execute()
+    # supabase-py = httpx sync → offload hors event loop (AUDIT C3).
+    await asyncio.to_thread(
+        lambda: sb.schema("app").table("agent_sessions").insert(
+            {
+                "session_id": session_info["session_id"],
+                "agent_name": session_info["agent_name"],
+                "user_id": user.user_id,
+                "user_query": user_query[:500],
+                "building_id": building_id,
+            }
+        ).execute()
+    )
 
 
 async def _next_version(user: AuthUser, session_id: str) -> int:
@@ -322,8 +325,8 @@ async def _fetch_last_plan_context(
     if not is_supabase_configured():
         return None, None
     sb = supabase_for_user(user)
-    res = (
-        sb.schema("app").table("renovation_plans")
+    res = await asyncio.to_thread(  # supabase-py sync → offload (C3)
+        lambda: sb.schema("app").table("renovation_plans")
         .select("building_id, plan_json, version")
         .eq("session_id", session_id)
         .order("version", desc=True)
@@ -389,17 +392,20 @@ async def _send_with_replay_fallback(
     # Persist new session row (RLS isole user_id)
     if is_supabase_configured():
         sb = supabase_for_user(user)
+        base_row = {
+            "session_id": new_sid,
+            "agent_name": "conx-plan",
+            "user_id": user.user_id,
+            "user_query": content[:500],
+            "building_id": building_id,
+        }
         try:
-            sb.schema("app").table("agent_sessions").insert(
-                {
-                    "session_id": new_sid,
-                    "agent_name": "conx-plan",
-                    "user_id": user.user_id,
-                    "user_query": content[:500],
-                    "building_id": building_id,
-                    "previous_session_id": session_id,
-                }
-            ).execute()
+            # supabase-py sync → offload (AUDIT C3).
+            await asyncio.to_thread(
+                lambda: sb.schema("app").table("agent_sessions")
+                .insert({**base_row, "previous_session_id": session_id})
+                .execute()
+            )
         except Exception as exc:
             # `previous_session_id` peut ne pas exister dans le schema —
             # on retente sans la colonne pour rester compatible.
@@ -407,17 +413,51 @@ async def _send_with_replay_fallback(
                 "Persist agent_sessions avec previous_session_id échoué (%s) — fallback sans.",
                 exc,
             )
-            sb.schema("app").table("agent_sessions").insert(
-                {
-                    "session_id": new_sid,
-                    "agent_name": "conx-plan",
-                    "user_id": user.user_id,
-                    "user_query": content[:500],
-                    "building_id": building_id,
-                }
-            ).execute()
+            try:
+                await asyncio.to_thread(
+                    lambda: sb.schema("app").table("agent_sessions")
+                    .insert(base_row)
+                    .execute()
+                )
+            except Exception as exc2:
+                logger.warning("Persist agent_sessions (fallback) échoué (%s).", exc2)
 
     return new_sid, True, session_id
+
+
+async def _verify_session_owned(user: AuthUser, session_id: str) -> str | None:
+    """Vérifie que la session appartient à l'utilisateur (protection IDOR, M1).
+
+    - Supabase non configuré → retourne None (mode offline : l'auth JWT fait foi).
+    - Supabase configuré mais INJOIGNABLE (réseau/projet en pause) → warning +
+      retourne None (dégradation vers JWT-only, cohérent avec le mode offline ;
+      on ne casse pas le stream quand l'infra d'autorisation est down).
+    - Supabase répond, session absente/non possédée → lève 404 (fail-closed).
+    - Session trouvée → retourne son `agent_name`.
+    """
+    if not is_supabase_configured():
+        return None
+    sb = supabase_for_user(user)
+    try:
+        res = await asyncio.to_thread(
+            lambda: sb.schema("app").table("agent_sessions")
+            .select("session_id, agent_name")
+            .eq("session_id", session_id)
+            .eq("user_id", user.user_id)  # défense en profondeur (AUDIT M1)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning(
+            "Vérif ownership session %s indisponible (Supabase injoignable: %s) "
+            "— dégradation JWT-only.",
+            session_id, exc,
+        )
+        return None
+    rows = res.data if hasattr(res, "data") else res.get("data", [])
+    if not rows:
+        raise HTTPException(status_code=404, detail="Session introuvable.")
+    return rows[0].get("agent_name")
 
 
 # ---------------------------------------------------------------------------
@@ -438,14 +478,21 @@ async def start_plan(
     building = await _fetch_building_light(conn, req.building_id)
     prompt = _build_initial_prompt(building, req)
 
-    # 1. Créer la session Anthropic
-    session_info = create_session("conx-plan")
+    # 1+2. Appels Anthropic (réseau, httpx sync) offloadés hors de l'event loop
+    # pour ne pas geler le stream SSE / les requêtes concurrentes (AUDIT C3).
+    session_info = await asyncio.to_thread(create_session, "conx-plan")
+    await asyncio.to_thread(send_user_message, session_info["session_id"], prompt)
 
-    # 2. Envoyer le user_message initial (en arrière-plan côté Anthropic)
-    send_user_message(session_info["session_id"], prompt)
-
-    # 3. Persister côté Supabase (RLS isole l'utilisateur)
-    await _persist_session(user, session_info, req.building_id, prompt[:500])
+    # 3. Persister côté Supabase (best-effort : la session est déjà créée et le
+    # message Opus payé — un échec de persistance ne doit pas perdre le
+    # session_id côté client, cf. AUDIT M4).
+    try:
+        await _persist_session(user, session_info, req.building_id, prompt[:500])
+    except Exception as exc:
+        logger.warning(
+            "Persistance session %s échouée (%s) — session renvoyée quand même.",
+            session_info["session_id"], exc,
+        )
 
     return PlanStartResponse(
         session_id=session_info["session_id"],
@@ -476,22 +523,11 @@ async def send_plan_message(
     # Vérifier que la session appartient bien à l'utilisateur (Supabase RLS).
     # En mode offline (pas Supabase) on saute le check et on assume l'auth JWT
     # suffit.
-    if is_supabase_configured():
-        sb = supabase_for_user(user)
-        res = (
-            sb.schema("app").table("agent_sessions")
-            .select("session_id, agent_name")
-            .eq("session_id", session_id)
-            .limit(1)
-            .execute()
+    agent_name = await _verify_session_owned(user, session_id)
+    if agent_name is not None and agent_name != "conx-plan":
+        raise HTTPException(
+            status_code=400, detail="Cette session n'est pas une session Plan."
         )
-        rows = res.data if hasattr(res, "data") else res.get("data", [])
-        if not rows:
-            raise HTTPException(status_code=404, detail="Session introuvable.")
-        if rows[0]["agent_name"] != "conx-plan":
-            raise HTTPException(
-                status_code=400, detail="Cette session n'est pas une session Plan."
-            )
 
     # _send_with_replay_fallback peut décider de basculer sur une nouvelle
     # session Anthropic si l'ancienne est `terminated` (B-001 long-idle).
@@ -549,7 +585,10 @@ async def stream_plan(
     L'API Anthropic supporte le paramètre `after` sur events.list — on le
     propage tel quel.
     """
-    _ = user  # auth requise — pas de logique par rôle ici
+    # Contrôle d'appartenance : sans ça, tout JWT valide peut streamer le plan
+    # d'un autre utilisateur en devinant le session_id (IDOR — AUDIT M1).
+    # Dégrade proprement si Supabase est injoignable (cf. _verify_session_owned).
+    await _verify_session_owned(user, session_id)
 
     async def _gen() -> AsyncIterator[bytes]:
         last_id: str | None = after
@@ -594,7 +633,12 @@ async def stream_plan(
                 )
                 if consecutive_errors >= 3:
                     yield serialize_event_for_sse(
-                        {"type": "stream.error", "detail": exc.detail, "status": exc.status_code, "last_event_id": last_id}
+                        {
+                            "type": "stream.error",
+                            "detail": exc.detail,
+                            "status": exc.status_code,
+                            "last_event_id": last_id,
+                        }
                     )
                     return
                 # Heartbeat + back-off doux, on retente
@@ -927,27 +971,34 @@ async def export_plan_pdf(
                         building_id, exc,
                     )
 
-    # --- 3. Rendre le PDF dans un fichier temporaire
+    # --- 3. Rendre le PDF dans un fichier temporaire UNIQUE puis le nettoyer.
+    # Nom aléatoire (pas prévisible/partagé) → pas de collision entre deux
+    # exports concurrents du même bâtiment, et suppression après lecture pour
+    # ne pas fuir sur le disque (AUDIT — export_plan_pdf temp file). WeasyPrint
+    # est CPU-bound → offload hors event loop (AUDIT C3).
     import tempfile
+    import uuid as _uuid
 
-    tmp_dir = Path(tempfile.gettempdir())
     safe_id = building_id.replace("/", "_").replace("..", "_")
-    out_path = tmp_dir / f"conx_plan_{safe_id}_v{version}.pdf"
-    render_plan_pdf(
-        plan_markdown=plan_text,
-        building_id=building_id,
-        version=version,
-        output_path=out_path,
-        adresse_postale=cover_meta["adresse_postale"],
-        commune_nom=cover_meta["commune_nom"],
-        dept=cover_meta["dept"],
-        rnb_id=cover_meta["rnb_id"],
-        identifiant_dpe_ademe=cover_meta["identifiant_dpe_ademe"],
-        bdnb_millesime=cover_meta["bdnb_millesime"],
-    )
-
-    # --- 4. Stream le PDF au browser
-    pdf_bytes = out_path.read_bytes()
+    out_path = Path(tempfile.gettempdir()) / f"conx_plan_{_uuid.uuid4().hex}.pdf"
+    try:
+        await asyncio.to_thread(
+            render_plan_pdf,
+            plan_markdown=plan_text,
+            building_id=building_id,
+            version=version,
+            output_path=out_path,
+            adresse_postale=cover_meta["adresse_postale"],
+            commune_nom=cover_meta["commune_nom"],
+            dept=cover_meta["dept"],
+            rnb_id=cover_meta["rnb_id"],
+            identifiant_dpe_ademe=cover_meta["identifiant_dpe_ademe"],
+            bdnb_millesime=cover_meta["bdnb_millesime"],
+        )
+        # --- 4. Stream le PDF au browser
+        pdf_bytes = out_path.read_bytes()
+    finally:
+        out_path.unlink(missing_ok=True)
     filename = f"ConX_pre-cadrage_{safe_id}_v{version}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),

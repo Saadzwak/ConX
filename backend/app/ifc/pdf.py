@@ -42,7 +42,8 @@ def render_pdf(validation_json: dict[str, Any], output_path: Path) -> Path:
     """
     try:
         from jinja2 import Environment, FileSystemLoader, select_autoescape
-        from weasyprint import HTML
+
+        from ..pdf_utils import render_html_to_pdf
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
@@ -73,7 +74,7 @@ def render_pdf(validation_json: dict[str, Any], output_path: Path) -> Path:
     }
     html_str = template.render(**context)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    HTML(string=html_str).write_pdf(str(output_path))
+    # Rendu via le helper durci (url_fetcher restreint — anti LFI/SSRF, C1).
+    render_html_to_pdf(html_str, output_path)
     logger.info("PDF généré : %s (%d bytes)", output_path, output_path.stat().st_size)
     return output_path

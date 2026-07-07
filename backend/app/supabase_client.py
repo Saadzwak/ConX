@@ -40,6 +40,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("conx.supabase")
 
+# WARNING one-shot quand on bascule sur service_role (dev-bypass) — non silencieux
+# mais non spammant. Cf. docs/AUDIT_2026-07-07.md C2.
+_service_role_fallback_warned = False
+
 
 @cache
 def _supabase_url() -> str:
@@ -86,8 +90,18 @@ def supabase_for_user(user: AuthUser) -> Client:
 
     # En mode dev-bypass (CONX_DEV_BYPASS_AUTH), l'AuthUser n'a pas de JWT —
     # on bascule sur le service_role pour permettre l'écriture côté Supabase.
-    # ⚠ Bypass la RLS ; à activer uniquement en dev. Cf. auth.py.
+    # ⚠ Bypass TOTAL de la RLS (accès à toutes les données de tous les users).
+    # À activer uniquement en dev ; les routes sensibles doivent en plus filtrer
+    # explicitement sur user_id (défense en profondeur). Cf. auth.py + AUDIT C2.
     if not user.jwt:
+        global _service_role_fallback_warned
+        if not _service_role_fallback_warned:
+            _service_role_fallback_warned = True
+            logger.warning(
+                "⚠ supabase_for_user : bascule sur service_role (RLS bypassée) "
+                "car l'utilisateur n'a pas de JWT (dev-bypass). Ne jamais exposer "
+                "publiquement dans cet état — cf. docs/AUDIT_2026-07-07.md C2."
+            )
         sr_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         if sr_key:
             return create_client(_supabase_url(), sr_key)

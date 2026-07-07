@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -132,6 +132,7 @@ def _persist_validation(
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_ifc(
+    request: Request,
     user: Annotated[AuthUser, Depends(get_current_user)],
     file: Annotated[UploadFile, File(description="Fichier .ifc à valider")],
 ) -> UploadResponse:
@@ -148,17 +149,15 @@ async def upload_ifc(
         raise HTTPException(status_code=400, detail="Nom de fichier manquant.")
     _validate_extension(file.filename)
 
-    # 1. Lire le contenu et vérifier la taille
-    contents = await file.read()
-    if len(contents) > MAX_IFC_SIZE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Fichier > {MAX_IFC_SIZE_BYTES // (1024 * 1024)} Mo.",
-        )
-    if not contents:
-        raise HTTPException(status_code=400, detail="Fichier vide.")
+    max_mb = MAX_IFC_SIZE_BYTES // (1024 * 1024)
 
-    # 2. Préparer les chemins
+    # 1. Rejet précoce sur Content-Length (indicatif — un client hostile peut
+    # mentir, d'où le recomptage en streaming ci-dessous). Cf. AUDIT M2.
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_IFC_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"Fichier > {max_mb} Mo.")
+
+    # 2. Préparer les chemins (on écrit en streaming, jamais tout en RAM).
     validation_id = str(uuid.uuid4())
     user_ifc_dir = IFC_DIR / user.user_id
     user_pdf_dir = PDF_DIR / user.user_id
@@ -167,11 +166,37 @@ async def upload_ifc(
     ifc_path = user_ifc_dir / f"{validation_id}.ifc"
     pdf_path = user_pdf_dir / f"{validation_id}.pdf"
 
-    # 3. Sauvegarder le fichier
-    ifc_path.write_bytes(contents)
+    # 3. Écriture par chunks avec garde de taille stricte (anti-DoS OOM :
+    # on n'accumule jamais l'intégralité du fichier en mémoire). Cf. AUDIT M2.
+    chunk_size = 1024 * 1024  # 1 Mo
+    total = 0
+    try:
+        with ifc_path.open("wb") as fh:
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_IFC_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=413, detail=f"Fichier > {max_mb} Mo."
+                    )
+                fh.write(chunk)
+    except HTTPException:
+        ifc_path.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        ifc_path.unlink(missing_ok=True)
+        logger.exception("Erreur écriture IFC")
+        raise HTTPException(status_code=500, detail=f"Erreur écriture : {exc}") from exc
+
+    if total == 0:
+        ifc_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="Fichier vide.")
+
     logger.info(
         "IFC uploadé par %s : %s → %s (%d bytes)",
-        user.user_id, file.filename, ifc_path, len(contents),
+        user.user_id, file.filename, ifc_path, total,
     )
 
     # 4. Valider via IfcOpenShell + règles MVP
@@ -225,13 +250,22 @@ async def download_pdf(
     user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> FileResponse:
     """Télécharge le PDF d'une validation appartenant à l'utilisateur."""
-    # Vérification ownership via Supabase RLS (la requête échoue si pas owner)
+    # validation_id doit être un UUID : bloque le path traversal en mode dégradé
+    # (le chemin disque est construit à partir de cette valeur). Cf. AUDIT C2/M2.
+    try:
+        uuid.UUID(validation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="validation_id invalide.") from exc
+
+    # Ownership via RLS Supabase + filtre user_id explicite (défense en profondeur :
+    # tient même si la RLS est bypassée par service_role). Cf. AUDIT C2.
     if is_supabase_configured():
         sb = supabase_for_user(user)
         res = (
             sb.schema("app").table("ifc_validations")
             .select("rapport_pdf_path_local, ifc_filename")
             .eq("id", validation_id)
+            .eq("user_id", user.user_id)
             .limit(1)
             .execute()
         )
@@ -272,6 +306,7 @@ async def list_validations(
     res = (
         sb.schema("app").table("ifc_validations")
         .select("id, ifc_filename, re2020_pass, pmr_pass, created_at")
+        .eq("user_id", user.user_id)  # défense en profondeur (AUDIT C2)
         .order("created_at", desc=True)
         .limit(50)
         .execute()

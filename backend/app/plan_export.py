@@ -14,7 +14,6 @@ import logging
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from fastapi import HTTPException
 
@@ -322,7 +321,8 @@ def render_plan_pdf(
 
     try:
         from jinja2 import Environment, FileSystemLoader, select_autoescape
-        from weasyprint import HTML
+
+        from .pdf_utils import render_html_to_pdf
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
@@ -359,8 +359,8 @@ def render_plan_pdf(
         generated_at=datetime.now(UTC).strftime("%d %B %Y · %H:%M UTC"),
     )
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    HTML(string=html_str).write_pdf(str(output_path))
+    # Rendu via le helper durci (url_fetcher restreint — anti LFI/SSRF, C1).
+    render_html_to_pdf(html_str, output_path)
     logger.info(
         "PDF plan généré : %s (%d bytes, building=%s, v%d)",
         output_path, output_path.stat().st_size, building_id, version,

@@ -23,6 +23,14 @@ logging.basicConfig(
     format="[%(asctime)s] %(levelname)s %(name)s — %(message)s",
 )
 
+# Exposition de la doc interactive : désactivée en prod ou via CONX_DISABLE_DOCS.
+# Évite d'exposer le schéma complet + Swagger « Try it out » quand le backend
+# passe par un tunnel public (ngrok). Cf. docs/AUDIT_2026-07-07.md.
+_env = (os.environ.get("CONX_ENV") or os.environ.get("ENV") or "").strip().lower()
+_disable_docs = _env in {"prod", "production"} or os.environ.get(
+    "CONX_DISABLE_DOCS", ""
+).strip().lower() in {"1", "true", "yes"}
+
 app = FastAPI(
     title="ConX API",
     version="0.13.0-j13",
@@ -31,7 +39,16 @@ app = FastAPI(
         "J13 : Mode Stratégie + Mode Projet (SSE) + Mode Conformité (IFC + PDF)."
     ),
     lifespan=lifespan,
+    docs_url=None if _disable_docs else "/docs",
+    redoc_url=None if _disable_docs else "/redoc",
+    openapi_url=None if _disable_docs else "/openapi.json",
 )
+
+if os.environ.get("CONX_DEV_BYPASS_AUTH", "").strip().lower() in {"1", "true", "yes"}:
+    logging.getLogger("conx").warning(
+        "⚠ CONX_DEV_BYPASS_AUTH est activé au démarrage — auth contournée. "
+        "Ne pas exposer publiquement dans cet état (cf. docs/AUDIT_2026-07-07.md C2)."
+    )
 
 cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(

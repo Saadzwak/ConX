@@ -14,7 +14,6 @@ pour valider la chaîne FastAPI sans rendu PDF réel.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -68,8 +67,13 @@ def monkeyclient(monkeypatch):
     app.dependency_overrides.clear()
 
 
-def test_export_pdf_requires_auth():
-    """Sans dependency_overrides, l'auth est requise."""
+def test_export_pdf_requires_auth(monkeypatch):
+    """Sans dependency_overrides, l'auth est requise.
+
+    On neutralise le dev-bypass ambiant (le conteneur tourne avec
+    CONX_DEV_BYPASS_AUTH=1) pour tester réellement le chemin non authentifié.
+    """
+    monkeypatch.delenv("CONX_DEV_BYPASS_AUTH", raising=False)
     from app.main import app
     client = TestClient(app)
     # Pas de header Authorization

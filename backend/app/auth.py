@@ -118,14 +118,49 @@ _DEV_BYPASS_USER_ID = "00000000-0000-0000-0000-0000000000de"
 _DEV_BYPASS_EMAIL = "dev@conx.local"
 
 
+# Flag process-level : le WARNING de bypass n'est émis qu'une fois (sinon il
+# floode les logs à chaque requête pendant la démo). Le but est que le bypass
+# ne soit jamais SILENCIEUX (cf. docs/AUDIT_2026-07-07.md C2), pas de spammer.
+_bypass_warned = False
+
+
+def _is_production() -> bool:
+    """Vrai si l'environnement est marqué production (`CONX_ENV`/`ENV` = prod)."""
+    env = (os.environ.get("CONX_ENV") or os.environ.get("ENV") or "").strip().lower()
+    return env in {"prod", "production"}
+
+
 def _dev_bypass_enabled() -> bool:
     """Vrai si on doit accepter un fake user en dev.
 
-    Activé via `CONX_DEV_BYPASS_AUTH=1`. À ne JAMAIS activer en prod.
+    Activé via `CONX_DEV_BYPASS_AUTH=1`. À ne JAMAIS activer en prod : par
+    sécurité, le bypass est **désactivé de force** si `CONX_ENV=prod` (même si
+    la variable traîne dans l'environnement). Cf. docs/AUDIT_2026-07-07.md C2.
+
     Utilité : permettre au frontend de fonctionner sans Supabase Auth (utile
     tant que la migration `app` schema n'est pas appliquée). Cf. BLOCKERS SUP.
     """
-    return os.environ.get("CONX_DEV_BYPASS_AUTH", "").strip().lower() in {"1", "true", "yes"}
+    enabled = os.environ.get("CONX_DEV_BYPASS_AUTH", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if enabled and _is_production():
+        logger.error(
+            "CONX_DEV_BYPASS_AUTH est actif mais CONX_ENV=prod → bypass IGNORÉ "
+            "(refus de dégrader l'auth en production)."
+        )
+        return False
+    if enabled:
+        global _bypass_warned
+        if not _bypass_warned:
+            _bypass_warned = True
+            logger.warning(
+                "⚠ CONX_DEV_BYPASS_AUTH actif : l'auth est CONTOURNÉE (user fictif "
+                "sur toutes les routes protégées). NE JAMAIS exposer publiquement "
+                "(ngrok/prod) dans cet état — cf. docs/AUDIT_2026-07-07.md C2."
+            )
+    return enabled
 
 
 def _dev_bypass_user(role: str = "architecte") -> AuthUser:

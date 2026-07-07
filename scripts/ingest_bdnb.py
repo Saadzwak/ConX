@@ -251,13 +251,75 @@ def inspect_schema(schema: str, env: dict[str, str]) -> list[tuple[str, str, int
     return rows
 
 
+def _ensure_migrations_table(env: dict[str, str]) -> None:
+    """Crée public_data.schema_migrations si absente (suivi des migrations appliquées)."""
+    res = psql_command(
+        [
+            "-v", "ON_ERROR_STOP=1", "-c",
+            "CREATE TABLE IF NOT EXISTS public_data.schema_migrations ("
+            "version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());",
+        ],
+        env,
+    )
+    if res.returncode != 0:
+        raise RuntimeError(
+            f"Création schema_migrations échouée : {(res.stderr or '')[-500:]}"
+        )
+
+
+def _applied_migrations(env: dict[str, str]) -> set[str]:
+    """Retourne l'ensemble des migrations déjà appliquées.
+
+    Fail-CLOSED : `_ensure_migrations_table` vient de réussir, donc un échec de
+    ce SELECT est anomal (pas "table vide"). On LÈVE plutôt que retourner set()
+    — sinon toutes les migrations seraient considérées non-appliquées et 011
+    (DROP VIEW CASCADE) rejouerait, VIDANT les tuiles (le CASCADE suit la
+    dépendance tiles_pub.*_mv → tiles.*_v). Cf. docs/AUDIT_2026-07-07.md C4.
+    Le cas légitime "table vide" (DB fraîche) renvoie set() via le chemin succès
+    (returncode 0, stdout vide).
+    """
+    res = psql_command(
+        ["-tAc", "SELECT version FROM public_data.schema_migrations;"], env
+    )
+    if res.returncode != 0:
+        raise RuntimeError(
+            "Lecture de schema_migrations échouée — arrêt (fail-closed pour ne "
+            f"pas rejouer les migrations destructives) : {(res.stderr or '')[-400:]}"
+        )
+    return {line.strip() for line in res.stdout.splitlines() if line.strip()}
+
+
+def _record_migration(name: str, env: dict[str, str]) -> None:
+    """Enregistre une migration comme appliquée (nom de fichier contrôlé, pas d'input externe)."""
+    psql_command(
+        [
+            "-v", "ON_ERROR_STOP=1", "-c",
+            "INSERT INTO public_data.schema_migrations(version) "
+            f"VALUES ('{name}') ON CONFLICT DO NOTHING;",
+        ],
+        env,
+    )
+
+
 def apply_migrations(env: dict[str, str]) -> None:
-    """Applique les fichiers SQL de scripts/sql/migrations/ dans l'ordre (.sql uniquement, pas .template)."""
+    """Applique les migrations .sql (pas .template) dans l'ordre, **une seule fois**.
+
+    Suivi via public_data.schema_migrations : une migration déjà appliquée est
+    SKIPPÉE. Empêche notamment de rejouer 011 (DROP VIEW CASCADE) + 012
+    (matviews WITH NO DATA), qui VIDAIENT les tuiles à chaque ré-ingestion
+    (cf. docs/AUDIT_2026-07-07.md C4/M12). Après changement de données, rafraîchir
+    les tuiles via scripts/refresh_tiles_matviews.py.
+    """
+    _ensure_migrations_table(env)
+    applied = _applied_migrations(env)
     migrations = sorted(
         p for p in SQL_MIGRATIONS_DIR.glob("*.sql") if not p.name.endswith(".template")
     )
     container = os.environ.get("CONX_POSTGRES_CONTAINER", "conx_postgres")
     for m in migrations:
+        if m.name in applied:
+            logger.info(f"Migration {m.name} déjà appliquée — skip.")
+            continue
         logger.info(f"Migration {m.name}")
         if using_docker_exec():
             # Copie + exec dans le container
@@ -298,6 +360,8 @@ def apply_migrations(env: dict[str, str]) -> None:
                 env=env,
                 check=True,
             )
+        # Succès (les deux branches lèvent sinon) → enregistrer comme appliquée.
+        _record_migration(m.name, env)
 
 
 def ingest_department(dept: str, inspect_only: bool = False) -> bool:

@@ -1,16 +1,19 @@
-# ConX — config martin (J7).
+# ConX — config martin (J7 ; durci Lot 3b — cf. docs/AUDIT_2026-07-07.md C5).
 #
-# Restreint l'auto-discovery au schéma `tiles` (créé en migration 011/012).
-# Évite d'exposer toutes les tables BDNB brutes en MVT (sécurité + clarté catalog).
+# Auto-discovery restreint au schéma `tiles_pub`, qui ne contient QUE les 3 vues
+# matérialisées rapides (migration 014). Les vues NON matérialisées `*_v`
+# (ST_Transform à la volée, jusqu'à 21 s/tuile) restent dans `tiles` et ne sont
+# donc PLUS exposées en MVT (vecteur de DoS accidentel supprimé). auto_publish
+# introspecte correctement toutes les propriétés (score, classe, etc.).
 
 listen_addresses: 0.0.0.0:3000
 default_srid: 4326
 
 postgres:
   connection_string: "${DATABASE_URL}"
-  # Auto-publie UNIQUEMENT les tables/vues du schéma `tiles`
+  # Auto-publie UNIQUEMENT les matviews du schéma `tiles_pub`
   auto_publish:
-    from_schemas: ["tiles"]
+    from_schemas: ["tiles_pub"]
     tables:
       source_id_format: "{table}"
     functions:

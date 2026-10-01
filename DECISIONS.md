@@ -1020,3 +1020,37 @@ Lot 4 qualité frontend (XSS, remount, races). Les décisions structurantes de c
 chantier (schéma `schema_migrations`, schéma `tiles_pub`, dégradation fail-open
 de la vérif ownership sur panne Supabase) sont tracées dans le rapport d'audit.
 
+---
+
+## D-028 — Repo rendu PUBLIC (2026-10-01)
+
+**Date** : 2026-10-01
+**Statut** : appliqué
+**Remplace** : D-010 (« Repo privé, pas d'open source », 2026-05-21).
+
+### Décision
+
+Le dépôt est publié en **public** sur GitHub (demande explicite du propriétaire,
+en connaissance du caractère irréversible d'une publication publique).
+
+### Garde-fous appliqués
+
+- **Secrets** : `.env` (clés Anthropic / Supabase service_role / JWT) jamais
+  committé (vérifié sur tout l'historique) et gitignoré. Aucun secret dans les
+  fichiers suivis.
+- **Protection tiers** : le pitch deck `ConX_pitch_deck_*.pdf` (noms personnels
+  de Saad EL BABIDI **et de la co-autrice Oumaima ELMALIHI**) a été **purgé de
+  TOUT l'historique git** (`git filter-repo`), pas seulement supprimé du dernier
+  commit — sinon il resterait récupérable via les anciens commits. La co-autrice
+  n'ayant pas consenti à une publication GitHub, son nom ne doit apparaître nulle
+  part dans le dépôt public.
+- **Licence** : aucune licence open-source ajoutée → droit d'auteur par défaut
+  (« tous droits réservés »). Le code reste **propriétaire** : visible mais non
+  réutilisable sans autorisation. Cohérent avec l'esprit de D-010.
+- Sauvegarde de l'historique pré-réécriture conservée hors dépôt (bundle git).
+
+### Raison
+
+Choix du propriétaire. Le revirement par rapport à D-010 est tracé ici (log
+append-only) plutôt qu'en réécrivant D-010.
+

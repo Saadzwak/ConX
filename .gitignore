@@ -79,3 +79,7 @@ logs/
 .cache/
 tmp/
 *.tmp
+
+# Config session Claude Code + notes internes (hors repo public)
+.claude/
+RECAP-SESSIONS.md

@@ -3,6 +3,8 @@
 Plateforme IA pour la rénovation énergétique hors-site décarbonée — Hauts-de-France.
 
 > **Code propriétaire, données 100 % publiques** (BDNB CSTB, DPE ADEME, LiDAR HD IGN, BD TOPO IGN, BD Ortho IGN, BAN, INIES — Licence Ouverte Etalab 2.0).
+>
+> ℹ️ Dépôt **public mais non open-source** : aucune licence n'est accordée, tous droits réservés (code visible, réutilisation soumise à autorisation). Cf. DECISIONS.md **D-028**.
 
 ## Documents projet
 

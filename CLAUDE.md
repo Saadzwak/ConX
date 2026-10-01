@@ -33,7 +33,7 @@
 | **D-007** | Jointure DPE ↔ BDNB via RNB ID prioritaire, fallback adresse + score de confiance UI |
 | **D-008** | LiDAR : BD TOPO partout, LiDAR détaillé à la demande + pré-génération 5-10 bâtiments démo |
 | **D-009** | Managed Agents : PostGIS (local) via HTTP, reste via Skills bundles |
-| **D-010** | Repo privé, pas d'open source |
+| ~~D-010~~ | ~~Repo privé, pas d'open source~~ — **REMPLACÉ PAR D-028** (2026-10-01 : repo rendu public, voir DECISIONS.md) |
 | **D-011** | **Split stack data** : PostgreSQL+PostGIS local Docker pour données publiques massives, Supabase free tier pour Auth + projets utilisateurs uniquement. Volume Docker `./data/storage/` pour LAZ/glTF/IFC/PDF. |
 | **D-012 → D-027** | Voir `DECISIONS.md` (auth JWT HS256, ML DPE retenu, bâtiment vedette Wazemmes, INIES base statique, **D-027 Marketplace HDF**, etc.). Cette table ne liste que les décisions fondatrices ; `DECISIONS.md` est la source complète. |
 
